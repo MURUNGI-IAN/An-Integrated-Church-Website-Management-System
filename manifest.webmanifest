@@ -1,0 +1,18 @@
+{
+  "name": "Bwala Deliverance and Healing Ministries",
+  "short_name": "Bwala Ministries",
+  "description": "Church information and public ministry resources for Bwala Deliverance and Healing Ministries in Masaka, Uganda.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f7f6f2",
+  "theme_color": "#153b32",
+  "icons": [
+    {
+      "src": "/icons/bwala.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

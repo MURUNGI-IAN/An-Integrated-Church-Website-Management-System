@@ -1,0 +1,496 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#153b32">
+    <meta name="api-base-url" content="">
+    <title>Staff Console | Bwala Ministries</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Serif+Display&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+    <script src="admin.js" defer></script>
+  </head>
+  <body class="admin-page">
+    <a class="skip-link" href="#admin-main">Skip to console</a>
+    <header class="admin-header">
+      <a class="brand" href="index.html"><span class="brand-mark" aria-hidden="true">B<span>+</span></span><span class="brand-name">Bwala Deliverance<br>and Healing Ministries</span></a>
+      <a class="admin-public-link" href="index.html">View public website ↗</a>
+    </header>
+    <main id="admin-main" class="admin-main">
+      <section class="admin-login" id="login-panel" aria-labelledby="login-title">
+        <p class="eyebrow eyebrow-dark"><span class="eyebrow-line"></span> Staff access</p>
+        <h1 id="login-title">Welcome back.</h1>
+        <p class="admin-intro">Sign in with an account provisioned by the church administrator.</p>
+        <form id="login-form">
+          <label for="login-email">Email address<input id="login-email" name="email" type="email" autocomplete="username" required></label>
+          <label for="login-password">Password<input id="login-password" name="password" type="password" autocomplete="current-password" required></label>
+          <button class="button button-green" type="submit">Sign in <span aria-hidden="true">↗</span></button>
+          <p class="form-status" id="login-status" aria-live="polite"></p>
+        </form>
+        <p class="form-notice">There is no public account registration. Ask an administrator to provision your account.</p>
+      </section>
+
+      <section id="console-panel" hidden>
+        <div class="console-heading">
+          <div><p class="eyebrow eyebrow-dark"><span class="eyebrow-line"></span> Church office</p><h1>Staff console</h1></div>
+          <div class="console-account"><span id="staff-identity"></span><button id="sign-out" class="underlined-link" type="button">Sign out</button></div>
+        </div>
+        <nav class="console-tabs" aria-label="Staff console sections">
+          <button type="button" data-tab="pages">Pages</button>
+          <button type="button" data-tab="sermons">Sermons</button>
+          <button type="button" data-tab="events">Events &amp; RSVPs</button>
+          <button type="button" data-tab="alerts">Emergency alerts</button>
+          <button type="button" data-tab="members">Members</button>
+          <button type="button" data-tab="attendance">Attendance</button>
+          <button type="button" data-tab="rota">Volunteer rota</button>
+          <button type="button" data-tab="groups">Small groups</button>
+          <button type="button" data-tab="children">Child safeguarding</button>
+          <button type="button" data-tab="contact">Contact inquiries</button>
+          <button type="button" data-tab="visitors">Visitor follow-up</button>
+          <button type="button" data-tab="prayer">Prayer care</button>
+          <button type="button" data-tab="finance">Finance</button>
+          <button type="button" data-tab="care-tasks">Care follow-up</button>
+          <button type="button" data-tab="resources">Resource booking</button>
+          <button type="button" data-tab="documents">Documents &amp; certificates</button>
+          <button type="button" data-tab="governance">Governance</button>
+          <button type="button" data-tab="analytics">Analytics</button>
+          <button type="button" data-tab="branches">Branches</button>
+          <button type="button" data-tab="audit">Audit log</button>
+        </nav>
+
+        <section class="console-panel" id="panel-alerts" data-panel="alerts" aria-labelledby="alerts-title" hidden>
+          <div class="console-panel-heading"><div><p class="eyebrow eyebrow-dark"><span class="eyebrow-line"></span> Urgent communication</p><h2 id="alerts-title">Emergency alerts</h2></div><p>Active alerts appear on the public website. This does not send SMS or push notifications.</p></div>
+          <div class="console-columns">
+            <form id="alert-form" class="staff-form">
+              <input name="id" type="hidden">
+              <label>Alert title<input name="title" maxlength="200" required></label>
+              <label>Message<textarea name="message" rows="5" maxlength="2000" required></textarea></label>
+              <label>Expires at<input name="expires_at" type="datetime-local"><span class="form-notice">Leave blank for no automatic expiration.</span></label>
+              <label class="staff-check"><input name="is_active" type="checkbox"><span>Show this alert on the public website</span></label>
+              <div class="staff-form-actions"><button class="button button-green" type="submit">Save alert</button><button class="text-button" type="reset">Clear</button></div>
+              <p class="form-status" aria-live="polite"></p>
+            </form>
+            <div><h3 class="list-heading">Saved alerts</h3><div class="admin-list" id="alerts-list"></div></div>
+          </div>
+        </section>
+
+        <section class="console-panel" id="panel-members" data-panel="members" aria-labelledby="members-title" hidden>
+          <div class="console-panel-heading"><div><p class="eyebrow eyebrow-dark"><span class="eyebrow-line"></span> Member registry</p><h2 id="members-title">Members</h2></div><p>Personal details are encrypted at rest. Only administrators and pastors can access member records.</p></div>
+          <div class="console-columns">
+            <form id="member-form" class="staff-form">
+              <input name="id" type="hidden">
+              <label>Full name<input name="name" maxlength="200" autocomplete="name" required></label>
+              <label>Email address<input name="email" type="email" maxlength="320" autocomplete="email"></label>
+              <label>Phone number<input name="phone" type="tel" maxlength="40" autocomplete="tel"></label>
+              <label>Branch<select class="branch-select" name="branch_id"><option value="">Unassigned</option></select></label>
+              <fieldset class="communication-consent-fields">
+                <legend>Optional message consent</legend>
+                <label class="staff-check"><input id="member-email-consent" type="checkbox"><span>Email updates</span></label>
+                <label>How was email consent recorded?<select id="member-email-consent-source"><option value="in_person">In person</option><option value="paper_form">Paper form</option><option value="web_form">Website form</option><option value="member_request">Member request</option><option value="not_provided">Not provided</option></select></label>
+                <label class="staff-check"><input id="member-sms-consent" type="checkbox"><span>SMS updates</span></label>
+                <label>How was SMS consent recorded?<select id="member-sms-consent-source"><option value="in_person">In person</option><option value="paper_form">Paper form</option><option value="web_form">Website form</option><option value="member_request">Member request</option><option value="not_provided">Not provided</option></select></label>
+                <p class="form-notice">Leave channels unchecked unless the member explicitly agreed. This records consent only; messaging is not configured.</p>
+              </fieldset>
+              <label class="staff-check member-consent"><input name="consent_confirmed" type="checkbox" required><span>I confirm the member has consented to this record being stored.</span></label>
+              <div class="staff-form-actions"><button class="button button-green" type="submit">Save member</button><button class="text-button" type="reset">Clear</button></div>
+              <p class="form-status" aria-live="polite"></p>
+            </form>
+            <div>
+              <div class="member-list-heading"><h3 class="list-heading">Member records</h3><label>Show<select id="member-status-filter"><option value="active">Active</option><option value="inactive">Inactive</option><option value="all">All</option></select></label></div>
+              <div class="admin-list" id="members-list"></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="console-panel" id="panel-attendance" data-panel="attendance" aria-labelledby="attendance-title" hidden>
+          <div class="console-panel-heading"><div><p class="eyebrow eyebrow-dark"><span class="eyebrow-line"></span> Service records</p><h2 id="attendance-title">Attendance</h2></div><p>Check-in records are limited to administrators, editors, and pastors.</p></div>
+          <div class="console-columns">
+            <form id="attendance-form" class="staff-form">
+              <label>Member<select id="attendance-member" name="member_id" required><option value="">Loading members…</option></select></label>
+              <label>Service name<input name="service_name" maxlength="120" required></label>
+              <label>Service date<input id="attendance-date" name="service_date" type="date" required></label>
+              <label>Branch<select class="branch-select" name="branch_id"><option value="">Unassigned</option></select></label>
+              <label>Check-in method<select name="check_in_method"><option value="manual">Staff entry</option><option value="phone">Phone</option><option value="qr">QR</option></select></label>
+              <div class="staff-form-actions"><button class="button button-green" type="submit">Check in member</button></div>
+              <p class="form-status" id="attendance-form-status" aria-live="polite"></p>
+            </form>
+            <div>
+              <div class="member-list-heading"><h3 class="list-heading">Service attendance</h3><label>Date<input id="attendance-list-date" type="date"></label></div>
+              <div class="admin-list" id="attendance-list" aria-live="polite"></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="console-panel" id="panel-rota" data-panel="rota" aria-labelledby="rota-title" hidden>
+          <div class="console-panel-heading"><div><p class="eyebrow eyebrow-dark"><span class="eyebrow-line"></span> Volunteer scheduling</p><h2 id="rota-title">Availability &amp; rota</h2></div><p>Staff record availability for each service date. Assignment generation balances recent service across eligible volunteers.</p></div>
+          <div class="console-columns rota-scope">
+            <label>Service name<input id="rota-service-name" maxlength="120" placeholder="Sunday worship" required></label>
+            <label>Service date<input id="rota-service-date" type="date" required></label>
+          </div>
+          <div class="console-columns">
+            <form id="availability-form" class="staff-form">
+              <label>Volunteer<select id="availability-member" required><option value="">Loading members…</option></select></label>
+              <label class="staff-check"><input id="availability-value" type="checkbox"><span>Available for this service</span></label>
+              <div class="staff-form-actions"><button class="button button-green" type="submit">Save availability</button></div>
+              <div class="availability-invite-actions">
+                <button class="text-button" id="create-availability-invite" type="button">Create response link</button>
+                <input id="availability-invite-link" type="url" aria-label="Volunteer response link" readonly hidden>
+                <p class="form-notice">The link works once and expires in seven days. Share it privately with the volunteer.</p>
+              </div>
+              <p class="form-status" aria-live="polite"></p>
+            </form>
+            <form id="rota-generate-form" class="staff-form">
+              <label>Roles needed<input id="rota-role-names" maxlength="2000" placeholder="Usher, Sound desk" required></label>
+              <p class="form-notice">Enter one role per volunteer, separated by commas. Generation requires enough available members.</p>
+              <div class="staff-form-actions"><button class="button button-green" type="submit">Generate rota</button></div>
+              <p class="form-status" aria-live="polite"></p>
+            </form>
+          </div>
+          <div class="console-columns rota-results">
+            <div><h3 class="list-heading">Availability</h3><div class="admin-list" id="availability-list"></div></div>
+            <div><h3 class="list-heading">Assigned volunteers</h3><div class="admin-list" id="rota-list"></div></div>
+          </div>
+        </section>
+
+        <section class="console-panel" id="panel-groups" data-panel="groups" aria-labelledby="admin-groups-title" hidden>
+          <div class="console-panel-heading"><div><p class="eyebrow eyebrow-dark"><span class="eyebrow-line"></span> Community directory</p><h2 id="admin-groups-title">Small groups</h2></div><p>Use approximate public meeting points only; never publish a member's home address.</p></div>
+          <div class="console-columns">
+            <form id="group-form" class="staff-form">
+              <input name="id" type="hidden">
+              <label>Group name<input name="name" maxlength="160" required></label>
+              <label>Description<textarea name="description" rows="4" maxlength="3000"></textarea></label>
+              <label>Meeting area<input name="meeting_area" maxlength="160" placeholder="Neighborhood or public landmark" required></label>
+              <div class="form-row"><label>Meeting day<select name="meeting_day" required><option value="">Choose a day</option><option>Monday</option><option>Tuesday</option><option>Wednesday</option><option>Thursday</option><option>Friday</option><option>Saturday</option><option>Sunday</option></select></label><label>Meeting time<input name="meeting_time" maxlength="40" placeholder="4:00 PM" required></label></div>
+              <label>Age group<input name="age_group" maxlength="80" value="All ages" required></label>
+              <div class="form-row"><label>Approximate latitude<input name="latitude" type="number" min="-90" max="90" step="any"></label><label>Approximate longitude<input name="longitude" type="number" min="-180" max="180" step="any"></label></div>
+              <p class="form-notice">Coordinates must identify a public area, not a private home.</p>
+              <label class="staff-check"><input name="is_open" type="checkbox" checked><span>Accepting new members</span></label>
+              <label class="staff-check"><input name="is_published" type="checkbox"><span>Publish in the public finder</span></label>
+              <div class="staff-form-actions"><button class="button button-green" type="submit">Save group</button><button class="text-button" type="reset">Clear</button></div>
+              <p class="form-status" aria-live="polite"></p>
+            </form>
+            <div><h3 class="list-heading">Group listings</h3><div class="admin-list" id="groups-list"></div></div>
+          </div>
+          <section class="group-waitlist-admin" id="group-waitlist-panel" hidden aria-labelledby="group-waitlist-title">
+            <h3 class="list-heading" id="group-waitlist-title">Waitlist</h3>
+            <div class="admin-list prayer-list" id="group-waitlist-list"></div>
+          </section>
+        </section>
+
+        <section class="console-panel" id="panel-children" data-panel="children" aria-labelledby="children-title" hidden>
+          <div class="console-panel-heading"><div><p class="eyebrow eyebrow-dark"><span class="eyebrow-line"></span> Safeguarding</p><h2 id="children-title">Child profiles</h2></div><p>Visible to administrators and pastors only. Child names are encrypted at rest.</p></div>
+          <div class="console-columns">
+            <form id="child-form" class="staff-form">
+              <input name="id" type="hidden">
+              <label>Child's name<input name="name" maxlength="200" required></label>
+              <label>Primary guardian<select name="primary_guardian_id" id="child-guardian" required><option value="">Loading members…</option></select></label>
+              <label>Other authorized pickup members<select name="authorized_pickup_member_ids" id="child-pickups" multiple size="5"></select></label>
+              <label class="staff-check"><input name="consent_confirmed" type="checkbox" required><span>I confirm the guardian has consented to this child record.</span></label>
+              <div class="staff-form-actions"><button class="button button-green" type="submit">Save child profile</button><button class="text-button" type="reset">Clear</button></div>
+              <p class="form-status" aria-live="polite"></p>
+            </form>
+            <div><h3 class="list-heading">Child profiles</h3><div class="admin-list" id="children-list"></div></div>
+          </div>
+          <div class="child-checkin-section">
+            <div class="console-panel-heading"><div><p class="eyebrow eyebrow-dark"><span class="eyebrow-line"></span> Service desk</p><h3>Child check-in and pickup</h3></div><p>Confirm the collecting adult's identity in person before releasing a child. The system checks authorization, not identity.</p></div>
+            <div class="console-columns">
+              <form id="child-checkin-form" class="staff-form">
+                <label>Child<select name="child_id" id="child-attendance-child" required><option value="">Loading children…</option></select></label>
+                <label>Guardian or authorized adult<select name="checked_in_by_member_id" id="child-attendance-adult" required><option value="">Choose a child first</option></select></label>
+                <label>Service name<input name="service_name" maxlength="120" required></label>
+                <label>Service date<input name="service_date" id="child-attendance-date" type="date" required></label>
+                <div class="staff-form-actions"><button class="button button-green" type="submit">Check in child</button></div>
+                <p class="form-status" aria-live="polite"></p>
+              </form>
+              <div>
+                <div class="member-list-heading"><h3 class="list-heading">Child attendance</h3><label>Date<input id="child-attendance-list-date" type="date"></label></div>
+                <div class="admin-list prayer-list" id="child-attendance-list" aria-live="polite"></div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="console-panel" id="panel-pages" data-panel="pages" aria-labelledby="pages-title" hidden>
+          <div class="console-panel-heading"><div><p class="eyebrow eyebrow-dark"><span class="eyebrow-line"></span> Website content</p><h2 id="pages-title">Pages</h2></div><p>Draft content stays private until published. Use the slug <strong>welcome-note</strong> to show a notice on the public homepage.</p></div>
+          <div class="console-columns">
+            <form id="page-form" class="staff-form">
+              <input name="id" type="hidden">
+              <label>URL slug<input name="slug" maxlength="120" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" placeholder="about-us" required></label>
+              <label>Page title<input name="title" maxlength="200" required></label>
+              <label>Page content<textarea name="body" rows="7" maxlength="50000" required></textarea></label>
+              <label class="staff-check"><input name="is_published" type="checkbox"><span>Publish this page</span></label>
+              <div class="staff-form-actions"><button class="button button-green" type="submit">Save page</button><button class="text-button" type="reset">Clear</button></div>
+              <p class="form-status" aria-live="polite"></p>
+            </form>
+            <div><h3 class="list-heading">Saved pages</h3><div class="admin-list" id="pages-list"></div></div>
+          </div>
+        </section>
+
+        <section class="console-panel" id="panel-sermons" data-panel="sermons" aria-labelledby="sermons-admin-title" hidden>
+          <div class="console-panel-heading"><div><p class="eyebrow eyebrow-dark"><span class="eyebrow-line"></span> Teaching archive</p><h2 id="sermons-admin-title">Sermons</h2></div><p>Only published recordings appear on the public site.</p></div>
+          <div class="console-columns">
+            <form id="sermon-form" class="staff-form">
+              <input name="id" type="hidden">
+              <label>Message title<input name="title" maxlength="200" required></label>
+              <label>Speaker<input name="speaker" maxlength="120" required></label>
+              <label>Scripture<input name="scripture" maxlength="120"></label>
+              <label>Summary<textarea name="summary" rows="4" maxlength="10000"></textarea></label>
+              <label>Recording URL<input name="media_url" type="url" maxlength="1000" placeholder="https://..."></label>
+              <label>Message date<input name="published_at" type="datetime-local" required></label>
+              <label class="staff-check"><input name="is_published" type="checkbox"><span>Publish this message</span></label>
+              <div class="staff-form-actions"><button class="button button-green" type="submit">Save message</button><button class="text-button" type="reset">Clear</button></div>
+              <p class="form-status" aria-live="polite"></p>
+            </form>
+            <div><h3 class="list-heading">Saved messages</h3><div class="admin-list" id="sermons-list"></div></div>
+          </div>
+        </section>
+
+        <section class="console-panel" id="panel-events" data-panel="events" aria-labelledby="events-admin-title" hidden>
+          <div class="console-panel-heading"><div><p class="eyebrow eyebrow-dark"><span class="eyebrow-line"></span> Church calendar</p><h2 id="events-admin-title">Events &amp; RSVPs</h2></div><p>Guest contact details are encrypted and visible only to signed-in content staff.</p></div>
+          <div class="console-columns">
+            <form id="event-form" class="staff-form">
+              <input name="id" type="hidden">
+              <label>Event name<input name="title" maxlength="200" required></label>
+              <label>Description<textarea name="description" rows="4" maxlength="10000"></textarea></label>
+              <label>Location<input name="location" maxlength="200" required></label>
+              <label>Branch<select class="branch-select" name="branch_id"><option value="">Unassigned</option></select></label>
+              <label>Starts at<input name="starts_at" type="datetime-local" required></label>
+              <label>Capacity<input name="capacity" type="number" min="1" step="1" placeholder="Leave blank for no limit"></label>
+              <label class="staff-check"><input name="registration_open" type="checkbox" checked><span>Allow registrations</span></label>
+              <label class="staff-check"><input name="is_published" type="checkbox"><span>Publish this event</span></label>
+              <div class="staff-form-actions"><button class="button button-green" type="submit">Save event</button><button class="text-button" type="reset">Clear</button></div>
+              <p class="form-status" aria-live="polite"></p>
+            </form>
+            <div><h3 class="list-heading">Saved events</h3><div class="admin-list" id="events-list"></div><div id="registration-results" class="registration-results" aria-live="polite"></div></div>
+          </div>
+        </section>
+
+        <section class="console-panel" id="panel-contact" data-panel="contact" aria-labelledby="contact-admin-title" hidden>
+          <div class="console-panel-heading"><div><p class="eyebrow eyebrow-dark"><span class="eyebrow-line"></span> Visitor follow-up</p><h2 id="contact-admin-title">Contact inquiries</h2></div><p>Visible to pastors and administrators only. Keep personal details confidential.</p></div>
+          <div class="admin-list" id="contact-list"></div>
+        </section>
+
+        <section class="console-panel" id="panel-visitors" data-panel="visitors" aria-labelledby="visitors-admin-title" hidden>
+          <div class="console-panel-heading"><div><p class="eyebrow eyebrow-dark"><span class="eyebrow-line"></span> Welcome and follow-up</p><h2 id="visitors-admin-title">Planned visits</h2></div><p>Visitor contact details are encrypted and visible only to administrators and pastors.</p></div>
+          <div class="admin-list" id="visitor-list"></div>
+        </section>
+
+        <section class="console-panel" id="panel-prayer" data-panel="prayer" aria-labelledby="prayer-admin-title" hidden>
+          <div class="console-panel-heading"><div><p class="eyebrow eyebrow-dark"><span class="eyebrow-line"></span> Confidential pastoral care</p><h2 id="prayer-admin-title">Prayer requests</h2></div><p>Visible to pastors and administrators only. Keep follow-up details confidential.</p></div>
+          <div class="admin-list prayer-list" id="prayer-list"></div>
+        </section>
+
+        <section class="console-panel" id="panel-finance" data-panel="finance" aria-labelledby="finance-title" hidden>
+          <div class="console-panel-heading"><div><p class="eyebrow eyebrow-dark"><span class="eyebrow-line"></span> Finance &amp; stewardship</p><h2 id="finance-title">Finance records</h2></div><p>Manual records only; no payment processing or payroll. Expenses require review by a different treasurer or administrator. Values are in whole UGX.</p></div>
+          <div class="console-columns">
+            <form id="finance-entry-form" class="staff-form">
+              <h3 class="list-heading">Record income or expense</h3>
+              <label>Entry type<select name="entry_type"><option value="income">Income</option><option value="expense">Expense (requires approval)</option></select></label>
+              <label>Amount (UGX)<input name="amount_ugx" type="number" min="1" step="1" required></label>
+              <label>Fund<input name="fund" maxlength="120" required placeholder="General, building, welfare…"></label>
+              <label>Category<input name="category" maxlength="120" required></label>
+              <label>Date<input name="entry_date" type="date" required></label>
+              <label>Branch<select class="branch-select" name="branch_id"><option value="">Unassigned</option></select></label>
+              <label>Recorded method<select name="payment_method"><option value="cash">Cash</option><option value="bank">Bank</option><option value="mobile_money_manual">Mobile money (recorded manually)</option><option value="card_manual">Card (recorded manually)</option><option value="other">Other</option></select></label>
+              <label>Details<textarea name="details" rows="3" maxlength="2000"></textarea></label>
+              <div class="staff-form-actions"><button class="button button-green" type="submit">Record entry</button></div>
+              <p class="form-status" aria-live="polite"></p>
+            </form>
+            <div><h3 class="list-heading">Recent entries</h3><div class="admin-list" id="finance-entries-list"></div>
+              <form id="offering-count-form" class="staff-form">
+                <h3 class="list-heading">Record first offering count</h3>
+                <p>Enter the sealed cash count once. A different finance staff member must recount independently before income is posted.</p>
+                <label>Service<input name="service_name" maxlength="120" required></label>
+                <label>Service date<input name="service_date" type="date" required></label>
+                <label>Branch<select class="branch-select" name="branch_id"><option value="">Unassigned</option></select></label>
+                <label>Fund<input name="fund" maxlength="120" value="General" required></label>
+                <label>Category<input name="category" maxlength="120" value="Offering" required></label>
+                <label>Counted amount (UGX)<input name="amount_ugx" type="number" min="1" step="1" required></label>
+                <label>Notes<textarea name="notes" rows="2" maxlength="2000"></textarea></label>
+                <div class="staff-form-actions"><button class="button button-green" type="submit">Save first count</button></div>
+                <p class="form-status" aria-live="polite"></p>
+              </form>
+            </div>
+          </div>
+          <div><h3 class="list-heading">Two-person offering count register</h3><div class="admin-list" id="offering-counts-list"></div></div>
+          <div class="console-columns">
+            <form id="finance-budget-form" class="staff-form">
+              <h3 class="list-heading">Set a budget</h3>
+              <label>Fund<input name="fund" maxlength="120" required></label>
+              <label>Category<input name="category" maxlength="120" required></label>
+              <label>Budget (UGX)<input name="amount_ugx" type="number" min="1" step="1" required></label>
+              <label>Period starts<input name="period_start" type="date" required></label>
+              <label>Period ends<input name="period_end" type="date" required></label>
+              <label>Branch<select class="branch-select" name="branch_id"><option value="">Unassigned</option></select></label>
+              <div class="staff-form-actions"><button class="button button-green" type="submit">Save budget</button></div>
+              <p class="form-status" aria-live="polite"></p>
+            </form>
+            <div><h3 class="list-heading">Budgets and approved spend</h3><div class="admin-list" id="finance-budgets-list"></div></div>
+          </div>
+          <div class="console-columns">
+            <form id="finance-pledge-form" class="staff-form">
+              <h3 class="list-heading">Record a pledge</h3>
+              <label>Campaign<input name="campaign" maxlength="160" required></label>
+              <label>Amount (UGX)<input name="amount_ugx" type="number" min="1" step="1" required></label>
+              <label>Donor name<input name="donor_name" maxlength="160" required></label>
+              <label>Contact (optional)<input name="donor_contact" maxlength="320"></label>
+              <label>Due date (optional)<input name="due_date" type="date"></label>
+              <label>Branch<select class="branch-select" name="branch_id"><option value="">Unassigned</option></select></label>
+              <label>Details<textarea name="details" rows="2" maxlength="1000"></textarea></label>
+              <div class="staff-form-actions"><button class="button button-green" type="submit">Record pledge</button></div>
+              <p class="form-status" aria-live="polite"></p>
+            </form>
+            <div><h3 class="list-heading">Pledges</h3><div class="admin-list" id="finance-pledges-list"></div></div>
+          </div>
+          <form id="finance-report-form" class="staff-form">
+            <h3 class="list-heading">Period report</h3>
+            <label>From<input name="period_start" type="date" required></label>
+            <label>To<input name="period_end" type="date" required></label>
+            <label>Branch<select class="branch-select" data-empty-label="All branches" name="branch_id"><option value="">All branches</option></select></label>
+            <div class="staff-form-actions"><button class="button button-green" type="submit">Generate report</button></div>
+            <p class="form-status" aria-live="polite"></p>
+            <div class="admin-list" id="finance-report-output" aria-live="polite"></div>
+          </form>
+        </section>
+
+        <section class="console-panel" id="panel-care-tasks" data-panel="care-tasks" aria-labelledby="care-tasks-title" hidden>
+          <div class="console-panel-heading"><div><p class="eyebrow eyebrow-dark"><span class="eyebrow-line"></span> Confidential pastoral care</p><h2 id="care-tasks-title">Care follow-up</h2></div><p>Only administrators and pastors can access these confidential notes. Tasks do not trigger automatic messages or alerts.</p></div>
+          <div class="console-columns">
+            <form id="care-task-form" class="staff-form">
+              <label>Member<select name="member_id" id="care-task-member" required><option value="">Loading members…</option></select></label>
+              <label>Care type<select name="care_type"><option value="attendance">Attendance follow-up</option><option value="pastoral_follow_up">Pastoral follow-up</option><option value="counseling">Counseling</option><option value="bereavement">Bereavement</option><option value="welfare">Welfare</option><option value="other">Other</option></select></label>
+              <label>Priority<select name="priority"><option value="normal">Normal</option><option value="low">Low</option><option value="high">High</option><option value="urgent">Urgent</option></select></label>
+              <label>Due date<input name="due_date" type="date"></label>
+              <label>Confidential notes<textarea name="notes" rows="4" maxlength="3000" required></textarea></label>
+              <div class="staff-form-actions"><button class="button button-green" type="submit">Create follow-up</button></div>
+              <p class="form-status" aria-live="polite"></p>
+            </form>
+            <div><h3 class="list-heading">Open care follow-ups</h3><div class="admin-list prayer-list" id="care-tasks-list"></div></div>
+          </div>
+        </section>
+
+        <section class="console-panel" id="panel-resources" data-panel="resources" aria-labelledby="resources-title" hidden>
+          <div class="console-panel-heading"><div><p class="eyebrow eyebrow-dark"><span class="eyebrow-line"></span> Church operations</p><h2 id="resources-title">Resource booking</h2></div><p>Bookings use the church’s local time zone as entered by staff. Overlapping pending or approved reservations are blocked.</p></div>
+          <div class="console-columns">
+            <form id="resource-form" class="staff-form">
+              <h3 class="list-heading">Add resource</h3>
+              <label>Resource name<input name="name" maxlength="160" required></label>
+              <label>Description<textarea name="description" rows="3" maxlength="1000"></textarea></label>
+              <div class="staff-form-actions"><button class="button button-green" type="submit">Save resource</button></div>
+              <p class="form-status" aria-live="polite"></p>
+            </form>
+            <div><h3 class="list-heading">Resources</h3><div class="admin-list" id="resources-list"></div></div>
+          </div>
+          <div class="console-columns">
+            <form id="resource-booking-form" class="staff-form">
+              <h3 class="list-heading">Request a booking</h3>
+              <label>Resource<select name="resource_id" id="booking-resource" required><option value="">Loading resources…</option></select></label>
+              <label>Starts at<input name="starts_at" type="datetime-local" required></label>
+              <label>Ends at<input name="ends_at" type="datetime-local" required></label>
+              <label>Purpose<textarea name="purpose" rows="3" maxlength="2000" required></textarea></label>
+              <div class="staff-form-actions"><button class="button button-green" type="submit">Request booking</button></div>
+              <p class="form-status" aria-live="polite"></p>
+            </form>
+            <div><h3 class="list-heading">Bookings</h3><div class="admin-list" id="resource-bookings-list"></div></div>
+          </div>
+        </section>
+
+        <section class="console-panel" id="panel-documents" data-panel="documents" aria-labelledby="documents-title" hidden>
+          <div class="console-panel-heading"><div><p class="eyebrow eyebrow-dark"><span class="eyebrow-line"></span> Records</p><h2 id="documents-title">Documents &amp; certificates</h2></div><p>Files up to 2 MB are encrypted in the database. Keep the encryption key backed up securely; documents cannot be recovered without it. Issued certificates can be downloaded as landscape PDFs.</p></div>
+          <div class="console-columns">
+            <form id="document-form" class="staff-form">
+              <h3 class="list-heading">Store a document</h3>
+              <label>Document type<input name="document_type" maxlength="48" required></label>
+              <label>Title<input name="title" maxlength="200" required></label>
+              <label>File<input name="file" type="file" accept=".pdf,.txt,.jpg,.jpeg,.png,application/pdf,text/plain,image/jpeg,image/png" required></label>
+              <div class="staff-form-actions"><button class="button button-green" type="submit">Store document</button></div>
+              <p class="form-status" aria-live="polite"></p>
+            </form>
+            <div><h3 class="list-heading">Stored documents</h3><div class="admin-list" id="documents-list"></div></div>
+          </div>
+          <div class="console-columns">
+            <form id="certificate-form" class="staff-form">
+              <h3 class="list-heading">Issue a certificate</h3>
+              <label>Member<select name="member_id" id="certificate-member" required><option value="">Loading members…</option></select></label>
+              <label>Certificate type<input name="certificate_type" maxlength="80" required></label>
+              <label>Issue date<input name="issued_on" type="date" required></label>
+              <label>Certificate number<input name="certificate_number" maxlength="80" required></label>
+              <label>Details<textarea name="details" rows="2" maxlength="2000"></textarea></label>
+              <div class="staff-form-actions"><button class="button button-green" type="submit">Issue certificate</button></div>
+              <p class="form-status" aria-live="polite"></p>
+            </form>
+            <div><h3 class="list-heading">Issued certificates</h3><div class="admin-list" id="certificates-list"></div></div>
+          </div>
+        </section>
+
+        <section class="console-panel" id="panel-branches" data-panel="branches" aria-labelledby="branches-title" hidden>
+          <div class="console-panel-heading"><div><p class="eyebrow eyebrow-dark"><span class="eyebrow-line"></span> Phase 4 · Multi-branch foundation</p><h2 id="branches-title">Branch register</h2></div><p>Shared-staff model: administrators manage this registry and authorized staff retain cross-branch access. New core records may be assigned to active branches; existing records remain unassigned until staff update them.</p></div>
+          <div class="console-columns">
+            <form id="branch-form" class="staff-form">
+              <h3 class="list-heading">Add a branch</h3>
+              <label>Branch name<input name="name" maxlength="160" required></label>
+              <label>Location (optional)<input name="location" maxlength="200"></label>
+              <label class="staff-check"><input name="is_active" type="checkbox" checked><span>Branch is active</span></label>
+              <div class="staff-form-actions"><button class="button button-green" type="submit">Save branch</button><button class="text-button" type="reset">Clear</button></div>
+              <p class="form-status" aria-live="polite"></p>
+            </form>
+            <div><h3 class="list-heading">Branches</h3><div class="admin-list" id="branches-list"></div></div>
+          </div>
+        </section>
+
+        <section class="console-panel" id="panel-analytics" data-panel="analytics" aria-labelledby="analytics-title" hidden>
+          <div class="console-panel-heading"><div><p class="eyebrow eyebrow-dark"><span class="eyebrow-line"></span> Phase 4 · Analytics</p><h2 id="analytics-title">Ministry overview</h2></div><p>Aggregated operational totals only. This dashboard does not display member identities, pastoral care, children, donor, or financial details.</p></div>
+          <form id="analytics-filter-form" class="staff-form">
+            <div class="form-row">
+              <label>From<input name="period_start" type="date" required></label>
+              <label>To<input name="period_end" type="date" required></label>
+              <label>Branch<select class="branch-select" data-empty-label="All branches" name="branch_id"><option value="">All branches</option></select></label>
+            </div>
+            <div class="staff-form-actions"><button class="button button-green" type="submit">Refresh overview</button></div>
+            <p class="form-status" aria-live="polite"></p>
+          </form>
+          <div class="admin-list" id="analytics-overview" aria-live="polite"></div>
+        </section>
+
+        <section class="console-panel" id="panel-governance" data-panel="governance" aria-labelledby="governance-title" hidden>
+          <div class="console-panel-heading"><div><p class="eyebrow eyebrow-dark"><span class="eyebrow-line"></span> Phase 4 · Governance</p><h2 id="governance-title">Meetings &amp; resolutions</h2></div><p>Minutes and resolution text are encrypted at rest and visible only to administrators and pastors. Record approved decisions through the resolution status workflow; formal voting and succession rules are not configured here.</p></div>
+          <div class="console-columns">
+            <form id="governance-meeting-form" class="staff-form">
+              <h3 class="list-heading">Record a meeting</h3>
+              <label>Meeting title<input name="title" maxlength="200" required></label>
+              <label>Date<input name="meeting_date" type="date" required></label>
+              <label>Location (optional)<input name="location" maxlength="200"></label>
+              <label>Branch<select class="branch-select" name="branch_id"><option value="">Unassigned</option></select></label>
+              <label>Status<select name="status"><option value="scheduled">Scheduled</option><option value="held">Held</option><option value="cancelled">Cancelled</option></select></label>
+              <label>Minutes<textarea name="minutes" rows="6" maxlength="20000"></textarea></label>
+              <p class="form-notice">Do not enter sensitive member or pastoral-care details in governance minutes.</p>
+              <div class="staff-form-actions"><button class="button button-green" type="submit">Save meeting</button></div>
+              <p class="form-status" aria-live="polite"></p>
+            </form>
+            <div><h3 class="list-heading">Meeting register</h3><div class="admin-list" id="governance-meetings-list"></div></div>
+          </div>
+          <div class="console-columns">
+            <form id="governance-resolution-form" class="staff-form">
+              <h3 class="list-heading">Record a resolution</h3>
+              <label>Meeting<select name="meeting_id" id="governance-resolution-meeting" required><option value="">Create a meeting first</option></select></label>
+              <label>Resolution title<input name="title" maxlength="200" required></label>
+              <label>Decision and action<textarea name="description" rows="5" maxlength="5000" required></textarea></label>
+              <label>Due date (optional)<input name="due_date" type="date"></label>
+              <div class="staff-form-actions"><button class="button button-green" type="submit">Save as proposed</button></div>
+              <p class="form-status" aria-live="polite"></p>
+            </form>
+            <div><h3 class="list-heading">Resolutions</h3><div class="admin-list" id="governance-resolutions-list"></div></div>
+          </div>
+        </section>
+
+        <section class="console-panel" id="panel-audit" data-panel="audit" aria-labelledby="audit-title" hidden>
+          <div class="console-panel-heading"><div><p class="eyebrow eyebrow-dark"><span class="eyebrow-line"></span> Accountability</p><h2 id="audit-title">Recent activity</h2></div><p>Latest 100 staff changes. Available to administrators only.</p></div>
+          <div class="admin-list" id="audit-list"></div>
+        </section>
+      </section>
+    </main>
+    <footer class="admin-footer"><span>Bwala Deliverance and Healing Ministries International · Masaka, Uganda</span><a href="tel:+256753972515">+256 753 972 515</a></footer>
+  </body>
+</html>

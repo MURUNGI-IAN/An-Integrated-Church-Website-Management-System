@@ -1,0 +1,11 @@
+fastapi>=0.115,<1.0
+uvicorn[standard]>=0.30
+SQLAlchemy>=2.0,<3.0
+psycopg[binary]>=3.2
+alembic>=1.14
+pydantic-settings>=2.7
+cryptography>=44
+PyJWT>=2.10
+reportlab>=4.2,<5.0
+pytest>=8.3
+httpx>=0.28
