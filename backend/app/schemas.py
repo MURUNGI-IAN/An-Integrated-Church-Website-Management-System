@@ -19,6 +19,62 @@ class PageOutput(PageInput):
     updated_at: datetime
 
 
+class LanguageOutput(BaseModel):
+    code: str
+    name: str
+    phase: int
+    enabled: bool
+
+
+class TranslationInput(BaseModel):
+    entity_type: Literal["page", "sermon"]
+    entity_id: int = Field(ge=1)
+    field: Literal["title", "body", "speaker", "scripture", "summary"]
+    language: Literal["lg", "nyn", "rw", "sw"]
+    value: str = Field(min_length=1, max_length=50000)
+    source: Literal["human", "ai_draft"] = "human"
+    status: Literal["draft", "pending_review"] = "draft"
+
+
+class TranslationOutput(TranslationInput):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    status: Literal["draft", "pending_review", "approved", "rejected"]
+    created_by_id: int
+    approved_by_id: int | None
+    approved_at: datetime | None
+    updated_at: datetime
+
+
+class TranslationReviewInput(BaseModel):
+    status: Literal["approved", "rejected"]
+
+
+class CaptionInput(BaseModel):
+    sermon_id: int = Field(ge=1)
+    language: Literal["en", "lg", "nyn", "rw"]
+    file_format: Literal["srt", "vtt"]
+    content: str = Field(min_length=1, max_length=500000)
+    source: Literal["human", "ai_draft"] = "human"
+    status: Literal["draft", "pending_review"] = "draft"
+
+
+class CaptionOutput(CaptionInput):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    status: Literal["draft", "pending_review", "approved", "rejected"]
+    created_by_id: int
+    approved_by_id: int | None
+    approved_at: datetime | None
+    updated_at: datetime
+
+
+class CaptionReviewInput(BaseModel):
+    status: Literal["approved", "rejected"]
+
+
 class SermonFields(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     speaker: str = Field(min_length=1, max_length=120)
@@ -438,6 +494,78 @@ class FinanceEntryOutput(BaseModel):
 
 class FinanceEntryCorrectionInput(BaseModel):
     reason: str = Field(min_length=5, max_length=1000)
+
+
+class PayrollInput(BaseModel):
+    member_id: int = Field(ge=1)
+    period_start: date
+    period_end: date
+    salary_ugx: int = Field(ge=0, le=10_000_000_000)
+    allowances_ugx: int = Field(default=0, ge=0, le=10_000_000_000)
+    deductions_ugx: int = Field(default=0, ge=0, le=10_000_000_000)
+    paye_ugx: int = Field(default=0, ge=0, le=10_000_000_000)
+    nssf_ugx: int = Field(default=0, ge=0, le=10_000_000_000)
+
+    @model_validator(mode="after")
+    def period_and_totals_are_valid(self):
+        if self.period_end < self.period_start:
+            raise ValueError("Payroll period end must be on or after the start")
+        if self.deductions_ugx + self.paye_ugx + self.nssf_ugx > self.salary_ugx + self.allowances_ugx:
+            raise ValueError("Total deductions cannot exceed gross pay")
+        return self
+
+
+class PayrollOutput(BaseModel):
+    id: int
+    member_id: int
+    period_start: date
+    period_end: date
+    salary_ugx: int
+    allowances_ugx: int
+    deductions_ugx: int
+    paye_ugx: int
+    nssf_ugx: int
+    gross_ugx: int
+    net_ugx: int
+    created_by_id: int
+    updated_by_id: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class PayrollReportOutput(BaseModel):
+    period_start: date
+    period_end: date
+    record_count: int
+    gross_ugx: int
+    allowances_ugx: int
+    deductions_ugx: int
+    paye_ugx: int
+    nssf_ugx: int
+    net_ugx: int
+
+
+class CounselingAppointmentInput(BaseModel):
+    counselee_id: int = Field(ge=1)
+    appointment_at: datetime
+    appointment_type: Literal["pre_marital", "marriage", "grief", "pastoral"]
+    assigned_counselor_id: int = Field(ge=1)
+    assigned_counselor_role: Literal["senior_pastor", "associate_pastor", "licensed_counselor", "safeguarding_lead"]
+    status: Literal["booked", "completed", "cancelled"] = "booked"
+
+    @field_validator("appointment_at")
+    @classmethod
+    def appointment_must_have_timezone(cls, value: datetime) -> datetime:
+        if value.tzinfo is None:
+            raise ValueError("Appointment time must include a timezone")
+        return value
+
+
+class CounselingAppointmentOutput(CounselingAppointmentInput):
+    id: int
+    created_by_id: int
+    created_at: datetime
+    updated_at: datetime
 
 
 class OfferingCountInput(BaseModel):

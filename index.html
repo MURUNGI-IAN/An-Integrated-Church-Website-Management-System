@@ -12,6 +12,7 @@
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Serif+Display&display=swap" rel="stylesheet">
     <link rel="manifest" href="manifest.webmanifest">
     <link rel="stylesheet" href="styles.css">
+    <link rel="icon" type="image/svg+xml" href="assets/church-logo.svg?v=83">
     <script src="app.js" defer></script>
   </head>
   <body>
@@ -20,21 +21,22 @@
     <section class="emergency-alerts" id="emergency-alerts" aria-label="Emergency notices" aria-live="assertive" hidden></section>
     <header class="site-header">
       <a class="brand" href="#top" aria-label="Bwala Deliverance and Healing Ministries home">
-        <span class="brand-mark" aria-hidden="true">B<span>+</span></span>
+        <img class="brand-logo" src="assets/church-logo.svg?v=83" width="75" height="75" alt="Bwala Deliverance and Healing Ministries logo">
         <span class="brand-name">Bwala Deliverance<br>and Healing Ministries</span>
       </a>
       <button class="menu-toggle" type="button" aria-expanded="false" aria-controls="site-nav" aria-label="Open navigation">
         <span></span><span></span>
       </button>
       <nav class="site-nav" id="site-nav" aria-label="Main navigation">
-        <a href="#visit">Plan a visit</a>
-        <a href="#messages">Messages</a>
-        <a href="#events">Events</a>
-        <a href="#gather">Gatherings</a>
-        <a href="#give">Giving</a>
-        <a href="#contact">Contact</a>
-        <a href="#safeguarding-report">Safeguarding report</a>
-        <a class="nav-contact" href="tel:+256753972515">Call the church <span aria-hidden="true">↗</span></a>
+        <a href="#visit" data-i18n="planVisit">Plan a visit</a>
+        <a href="#messages" data-i18n="messages">Messages</a>
+        <a href="#events" data-i18n="events">Events</a>
+        <a href="#gather" data-i18n="gatherings">Gatherings</a>
+        <a href="#give" data-i18n="giving">Giving</a>
+        <a href="#contact" data-i18n="contact">Contact</a>
+        <a href="#safeguarding-report" data-i18n="safeguarding">Safeguarding report</a>
+        <label class="language-picker"><span data-i18n="language">Language</span><select id="language-select" aria-label="Choose site language"><option value="en">English</option><option value="lg">Luganda</option><option value="nyn">Runyankole</option><option value="rw">Kinyarwanda</option><option value="sw" disabled>Swahili (Phase 2)</option></select></label>
+        <a class="nav-contact" href="tel:+256753972515" data-i18n="callChurch">Call the church <span aria-hidden="true">↗</span></a>
       </nav>
     </header>
 
@@ -294,7 +296,7 @@
     </main>
 
     <footer class="site-footer">
-      <a class="brand footer-brand" href="#top"><span class="brand-mark" aria-hidden="true">B<span>+</span></span><span class="brand-name">Bwala Deliverance<br>and Healing Ministries</span></a>
+      <a class="brand footer-brand" href="#top"><img class="brand-logo" src="assets/church-logo.svg?v=83" width="75" height="75" alt="Bwala Deliverance and Healing Ministries logo"><span class="brand-name">Bwala Deliverance<br>and Healing Ministries</span></a>
       <div class="footer-address">Bwala Deliverance and Healing Ministries International<br>Masaka, Uganda<nav class="footer-pages" id="published-pages" aria-label="Church information pages" hidden></nav></div>
       <a class="footer-phone" href="tel:+256753972515">+256 753 972 515 <span aria-hidden="true">↗</span></a>
       <span class="footer-small">© <span id="current-year"></span> Bwala Deliverance and Healing Ministries</span>

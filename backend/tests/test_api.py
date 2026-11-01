@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models import AdminUser, AuditLog, AvailabilityInvite, Branch, ChildAttendance, ChildProfile, ChurchEvent, ChurchResource, ContactInquiry, EmergencyAlert, EventRegistration, FinanceBudget, FinanceEntry, FinancePledge, GovernanceMeeting, GovernanceResolution, GroupWaitlist, Member, MemberAttendance, MemberCertificate, MemberCommunicationConsent, NewsletterSubscriber, OfferingCountBatch, PastoralCareTask, PrayerRequest, ResourceBooking, RotaAssignment, SafeguardingReport, Sermon, SitePage, SmallGroup, StaffDocument, VisitorVisit, VolunteerAvailability, VolunteerVettingRecord
+from app.models import AdminUser, AuditLog, AvailabilityInvite, Branch, ChildAttendance, ChildProfile, ChurchEvent, ChurchResource, ContactInquiry, ContentTranslation, EmergencyAlert, EventRegistration, FinanceBudget, FinanceEntry, FinancePledge, GovernanceMeeting, GovernanceResolution, GroupWaitlist, Member, MemberAttendance, MemberCertificate, MemberCommunicationConsent, NewsletterSubscriber, OfferingCountBatch, PastoralCareTask, PrayerRequest, ResourceBooking, RotaAssignment, SafeguardingReport, Sermon, SermonCaption, SitePage, SmallGroup, StaffDocument, VisitorVisit, VolunteerAvailability, VolunteerVettingRecord
 from app.security import decrypt_text, encrypt_text
 from tests.conftest import provision_user
 
@@ -21,6 +21,89 @@ def test_public_sermon_search_hides_drafts(client: TestClient) -> None:
     response = client.get("/api/v1/sermons", params={"q": "valley", "scripture": "23"})
     assert response.status_code == 200
     assert [sermon["title"] for sermon in response.json()] == ["Hope in the valley"]
+
+
+def test_language_translation_falls_back_until_admin_approval(client: TestClient) -> None:
+    editor_token = provision_user(client, "translator@example.org", role="editor")
+    editor_headers = {"Authorization": f"Bearer {editor_token}"}
+    page_response = client.post(
+        "/api/v1/admin/pages",
+        json={"slug": "language-test", "title": "Welcome", "body": "Welcome to Bwala.", "is_published": True},
+        headers=editor_headers,
+    )
+    assert page_response.status_code == 201, page_response.text
+    page_id = page_response.json()["id"]
+
+    translation = client.post(
+        "/api/v1/admin/translations",
+        json={
+            "entity_type": "page",
+            "entity_id": page_id,
+            "field": "title",
+            "language": "lg",
+            "value": "Tukwanirizza",
+            "source": "human",
+            "status": "pending_review",
+        },
+        headers=editor_headers,
+    )
+    assert translation.status_code == 201, translation.text
+    translation_id = translation.json()["id"]
+    assert client.get(f"/api/v1/pages/language-test", params={"language": "lg"}).json()["title"] == "Welcome"
+
+    admin_token = provision_user(client, "language-admin@example.org", role="admin")
+    approved = client.patch(
+        f"/api/v1/admin/translations/{translation_id}/review",
+        json={"status": "approved"},
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert approved.status_code == 200, approved.text
+    assert approved.json()["approved_by_id"] is not None
+    assert client.get(f"/api/v1/pages/language-test", params={"language": "lg"}).json()["title"] == "Tukwanirizza"
+
+
+def test_caption_validation_and_approval(client: TestClient) -> None:
+    editor_token = provision_user(client, "caption-editor@example.org", role="editor")
+    editor_headers = {"Authorization": f"Bearer {editor_token}"}
+    with Session(client.app.state.database_engine) as db:
+        sermon = Sermon(title="Captioned message", speaker="Pastor Grace", is_published=True)
+        db.add(sermon)
+        db.commit()
+        sermon_id = sermon.id
+
+    invalid = client.post(
+        "/api/v1/admin/captions",
+        json={"sermon_id": sermon_id, "language": "lg", "file_format": "vtt", "content": "not a VTT", "status": "pending_review"},
+        headers=editor_headers,
+    )
+    assert invalid.status_code == 422
+
+    caption = client.post(
+        "/api/v1/admin/captions",
+        json={
+            "sermon_id": sermon_id,
+            "language": "lg",
+            "file_format": "srt",
+            "content": "1\n00:00:01,000 --> 00:00:03,000\nTukusaba.",
+            "source": "ai_draft",
+            "status": "pending_review",
+        },
+        headers=editor_headers,
+    )
+    assert caption.status_code == 201, caption.text
+    caption_id = caption.json()["id"]
+    assert client.get(f"/api/v1/sermons/{sermon_id}/captions", params={"language": "lg"}).json() == []
+
+    admin_token = provision_user(client, "caption-admin@example.org", role="admin")
+    approved = client.patch(
+        f"/api/v1/admin/captions/{caption_id}/review",
+        json={"status": "approved"},
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert approved.status_code == 200, approved.text
+    public_captions = client.get(f"/api/v1/sermons/{sermon_id}/captions", params={"language": "lg"})
+    assert public_captions.status_code == 200
+    assert public_captions.json()[0]["file_format"] == "srt"
 
 
 def test_cms_requires_provisioned_staff_and_publication(client: TestClient) -> None:

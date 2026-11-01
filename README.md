@@ -91,6 +91,21 @@ python3 -m http.server 8080
 
 Open http://localhost:8080 for the public site or http://localhost:8080/admin.html for the staff console. The API allows this origin by default.
 
+### Free deployment for beginners
+
+The repository includes `render.yaml` for a Render deployment. Render can host the FastAPI API and a free PostgreSQL database from the same blueprint. The static frontend can be published separately with GitHub Pages or Cloudflare Pages.
+
+1. Push the repository to GitHub and create a Render account.
+2. In Render, choose **New → Blueprint**, connect the GitHub repository, and apply `render.yaml`.
+3. In the new `bwala-api` service, set `DATA_ENCRYPTION_KEY` to a generated Fernet key. Generate one locally with `py -3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` and keep it private.
+4. Set `CORS_ORIGINS` to the exact URL where the frontend will be hosted, for example `https://your-site.pages.dev`.
+5. Wait for the deployment to finish, then open the API `/docs` URL to confirm it is running.
+6. In `index.html` and `admin.html`, set the `api-base-url` meta tag to the deployed API URL, such as `https://bwala-api.onrender.com`, before publishing the frontend. The tag should look like `<meta name="api-base-url" content="https://bwala-api.onrender.com">`.
+7. Publish the repository root as a static site using GitHub Pages or Cloudflare Pages. Do not publish the `backend` directory as the frontend.
+8. Create the first administrator from a secure local environment using the API/admin provisioning process; never place an administrator password in Git or frontend files.
+
+Render free services may sleep when unused. Use PostgreSQL for real data; the deployed filesystem must not be treated as permanent storage.
+
 For a manual SQLite backup, run `python -m app.cli backup-db` from `backend/`. By default, backups are written outside the repository to `~/.local/state/bwala/backups` with owner-only file permissions. To automate daily backups on Linux, schedule this command with cron or a systemd timer. Test restores regularly. Back up `DATA_ENCRYPTION_KEY` separately in a secure secret store; database backups alone cannot recover encrypted records if that key is lost. PostgreSQL deployments should configure and test provider-managed backups.
 
 3. Provision an administrator
@@ -143,7 +158,9 @@ Confidential documents use `POST` and `GET /api/v1/admin/documents` and `GET /ap
 
 Attendance-based pastoral care alerts are evaluated when staff record a Sunday attendance entry. After three distinct Sundays with recorded service attendance, active members with no attendance on any of those three dates receive one confidential, auditable follow-up task for that Sunday window. The rule considers Sundays with recorded attendance, not a separately configured service calendar; it does not run on a schedule or emit alerts for Sundays with no attendance records.
 
-This baseline does not include payroll, payment-provider integrations, giving statements, or counseling appointment scheduling. Review the full workbook checklist with church staff before treating every Phase 3 workbook row as complete; this README describes the delivered scope, not a row-by-row workbook sign-off.
+Payroll and counseling are planned Phase 3 workstreams. Payroll scope for this phase is basic staff payroll only: salary, allowances, deductions, PAYE, NSSF, and payslip generation. Loans/advances, multi-currency, and complex benefits are out of scope and must be reviewed by the finance team. Payroll read/write access is limited to Finance Admin and Senior Pastor; Treasurer and Board roles may view reports only, with no edit access. Volunteers, department heads, and counselors have no payroll access. Every payroll view and edit must be audited.
+
+Counseling appointments support Senior Pastor, Associate Pastor, Licensed Counselor, and Safeguarding Lead for referrals only. Records capture the date/time, appointment type (pre-marital, marriage, grief, or pastoral), counselee ID, assigned counselor, and status (booked, completed, or cancelled). The system must not store detailed counseling notes; confidential notes remain offline with the counselor. Members may request appointments but cannot view counselor notes. Payment-provider integrations and giving statements remain outside this baseline. Review the full workbook checklist with church staff before treating every Phase 3 workbook row as complete; this README describes the delivered scope, not a row-by-row workbook sign-off.
 
 ### Phase 4 implementation
 
@@ -157,7 +174,7 @@ A starter institutions and missions register supports schools, clinics, savings 
 
 Public offline support is an installable web app served over HTTPS (or localhost for development). Its service worker caches the public shell only, never staff pages or API responses. The public client separately retains successful responses for the public events, sermons, groups, published pages, and current-alert endpoints in this browser, and uses those cached responses if the network request fails. Cached information may be stale; data is only available offline after it has been loaded once while online. Forms do not queue or submit offline. External images and fonts require a connection.
 
-Languages, caption/translation languages, and external service providers have not yet been specified. No provider integrations or unreviewed translations are configured. Institutions and missions also remain a future Phase 4 workstream.
+Phase 1 site languages are English (default/source of truth), Luganda, Runyankole, and Kinyarwanda, with browser auto-detection and manual switching. Swahili is a Phase 2 language. Communications Lead or an assigned translator may draft translations; Senior Pastor or Admin approval is required before publication, and machine translations must never auto-publish. Sermon/media captions support English, Luganda, Runyankole, and Kinyarwanda in SRT and VTT formats. Captions may be uploaded or prepared by an approved transcription provider, then human-reviewed; the original and translations are retained with human-approved or AI-draft-awaiting-review status. Institutions and missions also remain a future Phase 4 workstream.
 
 Security & Regulatory Compliance
 
@@ -197,8 +214,8 @@ Status is based on the code and documentation in this repository, not a church o
 | 1 – Public presence and security | Partial | Configure and verify online giving with the selected providers, including payment confirmation and reconciliation. Newsletter signup stores consented addresses but does not deliver messages. Complete deployment checks for HTTPS, off-site backups, and tested restore. |
 | 1 – Public presence and security | Partial | Manual MTN and Airtel payment instructions are configured. Implement and verify provider integrations, payment confirmation, reconciliation, and card checkout through a selected hosted payment gateway. Newsletter signup stores consented addresses but does not deliver messages. Complete deployment checks for HTTPS, off-site backups, and tested restore. |
 | 2 – Core operations | Partial | Member, attendance, child check-in, volunteer availability/rota, and emergency-alert workflows exist. Encrypted safeguarding incident/complaint intake and volunteer-vetting records now implement the supplied role, review, and retention rules. Email/SMS/WhatsApp consent preferences are recorded, but delivery, frequency enforcement, STOP/unsubscribe, push delivery, and rota reminders need providers. Background checks and external authority referrals happen outside the system; obtain legal review and staff acceptance before live use. |
-| 3 – Finance and care | Partial | The manual finance/care baseline exists. Payroll, payment-provider integrations, giving statements, and counseling appointment scheduling are not implemented. Reconcile this implementation against the full Phase 3 workbook with the treasurer and pastoral staff; the workbook is not in this repository. |
-| 4 – Growth and scale | Partial | Governance meeting/resolution records, aggregate analytics, a branch registry with optional tagging for selected records (including groups/resources), a starter institutions/missions register, and public read-only offline caching exist. Formal voting/quorum, succession tracking, branch-level permissions, tagging remaining record types, full institution/mission operations, captions/translations, and provider integrations remain. Offline forms do not queue submissions. Obtain policy, language, branch, and provider decisions before implementation. |
+| 3 – Finance and care | Partial | The manual finance/care baseline exists. Basic staff payroll and controlled counseling appointment scheduling remain planned according to the approved scope above. Payment-provider integrations and giving statements are not implemented. Reconcile this implementation against the full Phase 3 workbook with the treasurer and pastoral staff; the workbook is not in this repository. |
+| 4 – Growth and scale | Partial | Governance meeting/resolution records, aggregate analytics, a branch registry with optional tagging for selected records (including groups/resources), a starter institutions/missions register, language switching, translation approval, and public read-only offline caching exist. Formal voting/quorum, succession tracking, branch-level permissions, tagging remaining record types, full institution/mission operations, complete editorial translation coverage, and provider integrations remain. Offline forms do not queue submissions. Obtain policy, language, branch, and provider decisions before implementation. |
 
 ### Cross-phase release gates
 

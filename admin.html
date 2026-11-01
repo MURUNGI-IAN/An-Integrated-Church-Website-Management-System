@@ -7,6 +7,7 @@
     <!-- Set the API origin here when the deployed API is hosted separately. -->
     <meta name="api-base-url" content="">
     <title>Staff Console | Bwala Ministries</title>
+    <link rel="icon" type="image/svg+xml" href="assets/church-logo.svg?v=83">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Serif+Display&display=swap" rel="stylesheet">
@@ -17,7 +18,7 @@
     <a class="skip-link" href="#admin-main">Skip to console</a>
     <noscript><p class="noscript-notice">JavaScript is required to sign in and use the staff console. Enable JavaScript and reload this page.</p></noscript>
     <header class="admin-header">
-      <a class="brand" href="index.html"><span class="brand-mark" aria-hidden="true">B<span>+</span></span><span class="brand-name">Bwala Deliverance<br>and Healing Ministries</span></a>
+      <a class="brand" href="index.html"><img class="brand-logo" src="assets/church-logo.svg?v=83" width="75" height="75" alt="Bwala Deliverance and Healing Ministries logo"><span class="brand-name">Bwala Deliverance<br>and Healing Ministries</span></a>
       <a class="admin-public-link" href="index.html">View public website ↗</a>
     </header>
     <main id="admin-main" class="admin-main">
@@ -42,6 +43,7 @@
         <nav class="console-tabs" role="tablist" aria-label="Staff console sections">
           <button type="button" data-tab="pages">Pages</button>
           <button type="button" data-tab="sermons">Sermons</button>
+          <button type="button" data-tab="translations">Translations &amp; captions</button>
           <button type="button" data-tab="events">Events &amp; RSVPs</button>
           <button type="button" data-tab="alerts">Emergency alerts</button>
           <button type="button" data-tab="members">Members</button>
@@ -55,7 +57,9 @@
           <button type="button" data-tab="visitors">Visitor follow-up</button>
           <button type="button" data-tab="prayer">Prayer care</button>
           <button type="button" data-tab="finance">Finance</button>
+          <button type="button" data-tab="payroll">Payroll</button>
           <button type="button" data-tab="care-tasks">Care follow-up</button>
+          <button type="button" data-tab="counseling">Counseling appointments</button>
           <button type="button" data-tab="resources">Resource booking</button>
           <button type="button" data-tab="documents">Documents &amp; certificates</button>
           <button type="button" data-tab="governance">Governance</button>
@@ -78,6 +82,85 @@
               <p class="form-status" aria-live="polite"></p>
             </form>
             <div><h3 class="list-heading">Saved alerts</h3><div class="admin-list" id="alerts-list"></div></div>
+          </div>
+        </section>
+
+        <section class="console-panel" id="panel-payroll" data-panel="payroll" aria-labelledby="payroll-title" hidden>
+          <div class="console-panel-heading"><div><p class="eyebrow eyebrow-dark"><span class="eyebrow-line"></span> Finance &amp; stewardship</p><h2 id="payroll-title">Staff payroll</h2></div><p>Basic UGX payroll only: salary, allowances, deductions, PAYE, NSSF, and payslips. Finance Admin and Senior Pastor can edit. Treasurer and Board can view reports only. Confirm statutory rates with the finance team before production use.</p></div>
+          <div class="console-columns">
+            <form id="payroll-form" class="staff-form">
+              <input name="id" type="hidden">
+              <h3 class="list-heading">Record payroll</h3>
+              <label>Staff member ID<input name="member_id" type="number" min="1" required></label>
+              <div class="form-row"><label>Period starts<input name="period_start" type="date" required></label><label>Period ends<input name="period_end" type="date" required></label></div>
+              <label>Basic salary (UGX)<input name="salary_ugx" type="number" min="0" step="1" required></label>
+              <label>Allowances (UGX)<input name="allowances_ugx" type="number" min="0" step="1" value="0" required></label>
+              <label>Other deductions (UGX)<input name="deductions_ugx" type="number" min="0" step="1" value="0" required></label>
+              <label>PAYE (UGX)<input name="paye_ugx" type="number" min="0" step="1" value="0" required></label>
+              <label>NSSF (UGX)<input name="nssf_ugx" type="number" min="0" step="1" value="0" required></label>
+              <div class="staff-form-actions"><button class="button button-green" type="submit">Save payroll</button><button class="text-button" type="reset">Clear</button></div>
+              <p class="form-status" aria-live="polite"></p>
+            </form>
+            <div><h3 class="list-heading">Payroll records</h3><div class="admin-list" id="payroll-list"></div></div>
+          </div>
+          <form id="payroll-report-form" class="staff-form">
+            <h3 class="list-heading">Payroll report</h3>
+            <div class="form-row"><label>From<input name="period_start" type="date" required></label><label>To<input name="period_end" type="date" required></label></div>
+            <div class="staff-form-actions"><button class="button button-green" type="submit">Generate report</button></div>
+            <p class="form-status" aria-live="polite"></p><div class="admin-list" id="payroll-report-output" aria-live="polite"></div>
+          </form>
+        </section>
+
+        <section class="console-panel" id="panel-counseling" data-panel="counseling" aria-labelledby="counseling-title" hidden>
+          <div class="console-panel-heading"><div><p class="eyebrow eyebrow-dark"><span class="eyebrow-line"></span> Confidential care</p><h2 id="counseling-title">Counseling appointments</h2></div><p>Only appointment metadata is stored. Do not enter counseling notes here; confidential notes remain offline with the counselor. Safeguarding Lead access is referral-only.</p></div>
+          <div class="console-columns">
+            <form id="counseling-form" class="staff-form">
+              <input name="id" type="hidden">
+              <h3 class="list-heading">Book appointment</h3>
+              <label>Counselee member ID<input name="counselee_id" type="number" min="1" required></label>
+              <label>Date and time<input name="appointment_at" type="datetime-local" required></label>
+              <label>Appointment type<select name="appointment_type"><option value="pre_marital">Pre-marital</option><option value="marriage">Marriage</option><option value="grief">Grief</option><option value="pastoral">Pastoral</option></select></label>
+              <label>Counselor user ID<input name="assigned_counselor_id" type="number" min="1" required></label>
+              <label>Counselor role<select name="assigned_counselor_role"><option value="senior_pastor">Senior Pastor</option><option value="associate_pastor">Associate Pastor</option><option value="licensed_counselor">Licensed Counselor</option><option value="safeguarding_lead">Safeguarding Lead referral</option></select></label>
+              <label>Status<select name="status"><option value="booked">Booked</option><option value="completed">Completed</option><option value="cancelled">Cancelled</option></select></label>
+              <div class="staff-form-actions"><button class="button button-green" type="submit">Save appointment</button><button class="text-button" type="reset">Clear</button></div>
+              <p class="form-status" aria-live="polite"></p>
+            </form>
+            <div><h3 class="list-heading">Appointment register</h3><div class="admin-list" id="counseling-list"></div></div>
+          </div>
+        </section>
+
+        <section class="console-panel" id="panel-translations" data-panel="translations" aria-labelledby="translations-title" hidden>
+          <div class="console-panel-heading"><div><p class="eyebrow eyebrow-dark"><span class="eyebrow-line"></span> Languages &amp; media</p><h2 id="translations-title">Translations &amp; captions</h2></div><p>English remains the source of truth. Editors and assigned translators prepare drafts; only an administrator or Senior Pastor can approve them for public use.</p></div>
+          <div class="console-columns">
+            <form id="translation-form" class="staff-form">
+              <h3 class="list-heading">Add translation</h3>
+              <label>Content type<select name="entity_type"><option value="page">Page</option><option value="sermon">Sermon</option></select></label>
+              <label>Content ID<input name="entity_id" type="number" min="1" required></label>
+              <label>Field<select name="field"><option value="title">Title</option><option value="body">Body</option><option value="speaker">Speaker</option><option value="scripture">Scripture</option><option value="summary">Summary</option></select></label>
+              <label>Language<select name="language"><option value="lg">Luganda</option><option value="nyn">Runyankole</option><option value="rw">Kinyarwanda</option><option value="sw" disabled>Swahili (Phase 2)</option></select></label>
+              <label>Translation<textarea name="value" rows="6" maxlength="50000" required></textarea></label>
+              <label>Source<select name="source"><option value="human">Human translation</option><option value="ai_draft">AI draft awaiting review</option></select></label>
+              <label>Status<select name="status"><option value="draft">Draft</option><option value="pending_review">Pending review</option></select></label>
+              <div class="staff-form-actions"><button class="button button-green" type="submit">Save translation</button><button class="text-button" type="reset">Clear</button></div>
+              <p class="form-status" aria-live="polite"></p>
+            </form>
+            <div><h3 class="list-heading">Translation register</h3><div class="admin-list" id="translations-list"></div></div>
+          </div>
+          <div class="console-columns">
+            <form id="caption-form" class="staff-form">
+              <h3 class="list-heading">Add sermon captions</h3>
+              <label>Sermon ID<input name="sermon_id" type="number" min="1" required></label>
+              <label>Language<select name="language"><option value="en">English</option><option value="lg">Luganda</option><option value="nyn">Runyankole</option><option value="rw">Kinyarwanda</option></select></label>
+              <label>Format<select name="file_format"><option value="srt">SRT</option><option value="vtt">VTT</option></select></label>
+              <label>Caption file<input name="caption_file" type="file" accept=".srt,.vtt,text/vtt,application/x-subrip,text/plain"></label>
+              <label>Caption content<textarea name="content" rows="9" maxlength="500000" placeholder="Paste the SRT or VTT file content" required></textarea></label>
+              <label>Source<select name="source"><option value="human">Human transcript/translation</option><option value="ai_draft">AI draft awaiting review</option></select></label>
+              <label>Status<select name="status"><option value="draft">Draft</option><option value="pending_review">Pending review</option></select></label>
+              <div class="staff-form-actions"><button class="button button-green" type="submit">Save captions</button><button class="text-button" type="reset">Clear</button></div>
+              <p class="form-status" aria-live="polite"></p>
+            </form>
+            <div><h3 class="list-heading">Caption register</h3><div class="admin-list" id="captions-list"></div></div>
           </div>
         </section>
 

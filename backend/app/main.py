@@ -16,9 +16,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker, with_loader_criteria
 
 from app.config import get_settings
-from app.certificate_pdf import render_certificate_pdf
+from app.certificate_pdf import render_certificate_pdf, render_payslip_pdf
 from app.database import Base, engine, get_db
-from app.models import AdminUser, AuditLog, AvailabilityInvite, Branch, ChildAttendance, ChildPickupAuthorization, ChildProfile, ChurchEvent, ChurchResource, ContactInquiry, EmergencyAlert, EventRegistration, FinanceBudget, FinanceEntry, FinancePledge, GovernanceMeeting, GovernanceResolution, GroupWaitlist, InstitutionMissionRecord, Member, MemberAttendance, MemberCertificate, MemberCommunicationConsent, NewsletterSubscriber, OfferingCountBatch, PastoralCareTask, PrayerRequest, ResourceBooking, RotaAssignment, SafeguardingReport, Sermon, SitePage, SmallGroup, StaffDocument, VisitorVisit, VolunteerAvailability, VolunteerVettingRecord
+from app.models import AdminUser, AuditLog, AvailabilityInvite, Branch, ChildAttendance, ChildPickupAuthorization, ChildProfile, ChurchEvent, ChurchResource, ContentTranslation, ContactInquiry, CounselingAppointment, EmergencyAlert, EventRegistration, FinanceBudget, FinanceEntry, FinancePledge, GovernanceMeeting, GovernanceResolution, GroupWaitlist, InstitutionMissionRecord, Member, MemberAttendance, MemberCertificate, MemberCommunicationConsent, NewsletterSubscriber, OfferingCountBatch, PayrollRecord, PastoralCareTask, PrayerRequest, ResourceBooking, RotaAssignment, SafeguardingReport, Sermon, SermonCaption, SitePage, SmallGroup, StaffDocument, VisitorVisit, VolunteerAvailability, VolunteerVettingRecord
 from app.schemas import (
     EventInput,
     EventOutput,
@@ -42,6 +42,8 @@ from app.schemas import (
     OfferingCountVerificationInput,
     ContactInput,
     ContactOutput,
+    CounselingAppointmentInput,
+    CounselingAppointmentOutput,
     CommunicationConsentOutput,
     CommunicationConsentUpdate,
     EmergencyAlertInput,
@@ -83,6 +85,9 @@ from app.schemas import (
     PastoralCareTaskInput,
     PastoralCareTaskOutput,
     PastoralCareTaskUpdate,
+    PayrollInput,
+    PayrollOutput,
+    PayrollReportOutput,
     RegistrationInput,
     ResourceBookingInput,
     ResourceBookingOutput,
@@ -105,7 +110,15 @@ from app.schemas import (
     VolunteerVettingOutput,
     VolunteerVettingReviewInput,
     VolunteerVettingStatusInput,
+    CaptionInput,
+    CaptionOutput,
+    CaptionReviewInput,
+    LanguageOutput,
+    TranslationInput,
+    TranslationOutput,
+    TranslationReviewInput,
 )
+from app.languages import LANGUAGE_NAMES, PHASE_1_LANGUAGES, PHASE_2_LANGUAGES
 from app.security import create_access_token, decrypt_text, encrypt_text, hash_password, keyed_digest, require_roles, verify_password
 
 EMAIL_PATTERN = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
@@ -149,6 +162,8 @@ def apply_staff_branch_scope(execute_state) -> None:
 
 def create_app(database_engine=None) -> FastAPI:
     app_engine = database_engine or engine
+    if database_engine is None:
+        get_settings().validate_production_secrets()
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
@@ -186,10 +201,40 @@ def create_app(database_engine=None) -> FastAPI:
     pastoral_manager = require_roles("admin", "pastor", "senior_pastor")
     resource_manager = require_roles("admin", "editor", "pastor", "senior_pastor")
     document_manager = require_roles("admin", "pastor", "senior_pastor")
+    translation_manager = require_roles("admin", "editor", "senior_pastor")
+    translation_approver = require_roles("admin", "senior_pastor")
+    payroll_editor = require_roles("admin", "finance_admin", "senior_pastor")
+    payroll_reader = require_roles("admin", "finance_admin", "senior_pastor", "treasurer", "board_chair")
+    counseling_manager = require_roles("admin", "senior_pastor", "associate_pastor", "licensed_counselor", "safeguarding_lead")
     cross_branch_roles = GLOBAL_BRANCH_ROLES
 
     def record_audit(db: Session, actor: AdminUser, action: str, entity_type: str, entity_id: int) -> None:
         db.add(AuditLog(actor_id=actor.id, action=action, entity_type=entity_type, entity_id=entity_id))
+
+    def localized_content(db: Session, entity_type: str, entity_id: int, field: str, language: str, english_value: str) -> str:
+        if language == "en":
+            return english_value
+        translation = db.scalar(
+            select(ContentTranslation).where(
+                ContentTranslation.entity_type == entity_type,
+                ContentTranslation.entity_id == entity_id,
+                ContentTranslation.field == field,
+                ContentTranslation.language == language,
+                ContentTranslation.status == "approved",
+            )
+        )
+        return translation.value if translation else english_value
+
+    def validate_caption_content(file_format: str, content: str) -> None:
+        if file_format == "vtt" and not content.lstrip().startswith("WEBVTT"):
+            raise HTTPException(status_code=422, detail="VTT captions must start with WEBVTT")
+        if file_format == "srt" and not re.search(r"\d{2}:\d{2}:\d{2}[,.]\d{3}\s+-->\s+\d{2}:\d{2}:\d{2}[,.]\d{3}", content):
+            raise HTTPException(status_code=422, detail="SRT captions must contain a valid time cue")
+
+    def translation_target_exists(db: Session, payload: TranslationInput) -> None:
+        model = SitePage if payload.entity_type == "page" else Sermon
+        if db.get(model, payload.entity_id) is None:
+            raise HTTPException(status_code=404, detail=f"{payload.entity_type.title()} not found")
 
     def active_member(db: Session, member_id: int) -> Member:
         member = db.get(Member, member_id)
@@ -652,24 +697,48 @@ def create_app(database_engine=None) -> FastAPI:
         db.commit()
         return {"id": alert.id, "is_active": alert.is_active}
 
+    @app.get("/api/v1/languages", response_model=list[LanguageOutput], tags=["website"])
+    def list_languages():
+        return [
+            {"code": code, "name": LANGUAGE_NAMES[code], "phase": 1, "enabled": True}
+            for code in PHASE_1_LANGUAGES
+        ] + [
+            {"code": code, "name": LANGUAGE_NAMES[code], "phase": 2, "enabled": False}
+            for code in PHASE_2_LANGUAGES
+        ]
+
     @app.get("/api/v1/pages", response_model=list[PageOutput], tags=["website"])
-    def list_published_pages(db: Session = Depends(get_db)):
-        return db.scalars(
-            select(SitePage).where(SitePage.is_published.is_(True)).order_by(SitePage.title)
-        ).all()
+    def list_published_pages(
+        language: str = Query(default="en", pattern="^(en|lg|nyn|rw)$"),
+        db: Session = Depends(get_db),
+    ):
+        pages = db.scalars(select(SitePage).where(SitePage.is_published.is_(True)).order_by(SitePage.title)).all()
+        return [
+            {
+                **PageOutput.model_validate(page).model_dump(),
+                "title": localized_content(db, "page", page.id, "title", language, page.title),
+                "body": localized_content(db, "page", page.id, "body", language, page.body),
+            }
+            for page in pages
+        ]
 
     @app.get("/api/v1/pages/{slug}", response_model=PageOutput, tags=["website"])
-    def read_page(slug: str, db: Session = Depends(get_db)):
+    def read_page(slug: str, language: str = Query(default="en", pattern="^(en|lg|nyn|rw)$"), db: Session = Depends(get_db)):
         page = db.scalar(select(SitePage).where(SitePage.slug == slug, SitePage.is_published.is_(True)))
         if page is None:
             raise HTTPException(status_code=404, detail="Page not found")
-        return page
+        return {
+            **PageOutput.model_validate(page).model_dump(),
+            "title": localized_content(db, "page", page.id, "title", language, page.title),
+            "body": localized_content(db, "page", page.id, "body", language, page.body),
+        }
 
     @app.get("/api/v1/sermons", response_model=list[SermonOutput], tags=["sermons"])
     def list_sermons(
         q: str | None = Query(default=None, max_length=120),
         speaker: str | None = Query(default=None, max_length=120),
         scripture: str | None = Query(default=None, max_length=120),
+        language: str = Query(default="en", pattern="^(en|lg|nyn|rw)$"),
         limit: int = Query(default=20, ge=1, le=100),
         offset: int = Query(default=0, ge=0),
         db: Session = Depends(get_db),
@@ -682,7 +751,30 @@ def create_app(database_engine=None) -> FastAPI:
             query = query.where(Sermon.speaker.ilike(f"%{speaker.strip()}%"))
         if scripture:
             query = query.where(Sermon.scripture.ilike(f"%{scripture.strip()}%"))
-        return db.scalars(query.order_by(Sermon.published_at.desc()).limit(limit).offset(offset)).all()
+        sermons = db.scalars(query.order_by(Sermon.published_at.desc()).limit(limit).offset(offset)).all()
+        return [
+            {
+                **SermonOutput.model_validate(sermon).model_dump(),
+                "title": localized_content(db, "sermon", sermon.id, "title", language, sermon.title),
+                "speaker": localized_content(db, "sermon", sermon.id, "speaker", language, sermon.speaker),
+                "scripture": localized_content(db, "sermon", sermon.id, "scripture", language, sermon.scripture or "") or None,
+                "summary": localized_content(db, "sermon", sermon.id, "summary", language, sermon.summary),
+            }
+            for sermon in sermons
+        ]
+
+    @app.get("/api/v1/sermons/{sermon_id}/captions", response_model=list[CaptionOutput], tags=["sermons"])
+    def list_public_captions(
+        sermon_id: int,
+        language: str | None = Query(default=None, pattern="^(en|lg|nyn|rw)$"),
+        db: Session = Depends(get_db),
+    ):
+        if db.get(Sermon, sermon_id) is None:
+            raise HTTPException(status_code=404, detail="Sermon not found")
+        query = select(SermonCaption).where(SermonCaption.sermon_id == sermon_id, SermonCaption.status == "approved")
+        if language:
+            query = query.where(SermonCaption.language == language)
+        return db.scalars(query.order_by(SermonCaption.language)).all()
 
     @app.get("/api/v1/events", response_model=list[EventOutput], tags=["events"])
     def list_events(db: Session = Depends(get_db)):
@@ -1137,6 +1229,322 @@ def create_app(database_engine=None) -> FastAPI:
         db.commit()
         db.refresh(sermon)
         return sermon
+
+    @app.get("/api/v1/admin/translations", response_model=list[TranslationOutput], tags=["staff CMS"])
+    def list_translations(
+        _: Annotated[AdminUser, Depends(translation_manager)],
+        entity_type: str | None = Query(default=None, pattern="^(page|sermon)$"),
+        status: str | None = Query(default=None, pattern="^(draft|pending_review|approved|rejected)$"),
+        db: Session = Depends(get_db),
+    ):
+        query = select(ContentTranslation)
+        if entity_type:
+            query = query.where(ContentTranslation.entity_type == entity_type)
+        if status:
+            query = query.where(ContentTranslation.status == status)
+        return db.scalars(query.order_by(ContentTranslation.updated_at.desc())).all()
+
+    @app.post("/api/v1/admin/translations", response_model=TranslationOutput, status_code=201, tags=["staff CMS"])
+    def create_translation(
+        payload: TranslationInput,
+        actor: Annotated[AdminUser, Depends(translation_manager)],
+        db: Session = Depends(get_db),
+    ):
+        translation_target_exists(db, payload)
+        translation = ContentTranslation(**payload.model_dump(), created_by_id=actor.id)
+        db.add(translation)
+        db.flush()
+        record_audit(db, actor, "create", "translation", translation.id)
+        try:
+            db.commit()
+        except IntegrityError as exc:
+            db.rollback()
+            raise HTTPException(status_code=409, detail="A translation already exists for this field and language") from exc
+        db.refresh(translation)
+        return translation
+
+    @app.put("/api/v1/admin/translations/{translation_id}", response_model=TranslationOutput, tags=["staff CMS"])
+    def update_translation(
+        translation_id: int,
+        payload: TranslationInput,
+        actor: Annotated[AdminUser, Depends(translation_manager)],
+        db: Session = Depends(get_db),
+    ):
+        translation = db.get(ContentTranslation, translation_id)
+        if translation is None:
+            raise HTTPException(status_code=404, detail="Translation not found")
+        translation_target_exists(db, payload)
+        for field, value in payload.model_dump().items():
+            setattr(translation, field, value)
+        translation.approved_by_id = None
+        translation.approved_at = None
+        record_audit(db, actor, "update", "translation", translation.id)
+        db.commit()
+        db.refresh(translation)
+        return translation
+
+    @app.patch("/api/v1/admin/translations/{translation_id}/review", response_model=TranslationOutput, tags=["staff CMS"])
+    def review_translation(
+        translation_id: int,
+        payload: TranslationReviewInput,
+        actor: Annotated[AdminUser, Depends(translation_approver)],
+        db: Session = Depends(get_db),
+    ):
+        translation = db.get(ContentTranslation, translation_id)
+        if translation is None:
+            raise HTTPException(status_code=404, detail="Translation not found")
+        translation.status = payload.status
+        translation.approved_by_id = actor.id if payload.status == "approved" else None
+        translation.approved_at = datetime.now(timezone.utc) if payload.status == "approved" else None
+        record_audit(db, actor, f"{payload.status}_translation", "translation", translation.id)
+        db.commit()
+        db.refresh(translation)
+        return translation
+
+    @app.get("/api/v1/admin/captions", response_model=list[CaptionOutput], tags=["staff CMS"])
+    def list_captions(
+        _: Annotated[AdminUser, Depends(translation_manager)],
+        sermon_id: int | None = Query(default=None, ge=1),
+        status: str | None = Query(default=None, pattern="^(draft|pending_review|approved|rejected)$"),
+        db: Session = Depends(get_db),
+    ):
+        query = select(SermonCaption)
+        if sermon_id:
+            query = query.where(SermonCaption.sermon_id == sermon_id)
+        if status:
+            query = query.where(SermonCaption.status == status)
+        return db.scalars(query.order_by(SermonCaption.updated_at.desc())).all()
+
+    @app.post("/api/v1/admin/captions", response_model=CaptionOutput, status_code=201, tags=["staff CMS"])
+    def create_caption(
+        payload: CaptionInput,
+        actor: Annotated[AdminUser, Depends(translation_manager)],
+        db: Session = Depends(get_db),
+    ):
+        if db.get(Sermon, payload.sermon_id) is None:
+            raise HTTPException(status_code=404, detail="Sermon not found")
+        validate_caption_content(payload.file_format, payload.content)
+        caption = SermonCaption(**payload.model_dump(), created_by_id=actor.id)
+        db.add(caption)
+        db.flush()
+        record_audit(db, actor, "create", "sermon_caption", caption.id)
+        try:
+            db.commit()
+        except IntegrityError as exc:
+            db.rollback()
+            raise HTTPException(status_code=409, detail="A caption already exists for this sermon and language") from exc
+        db.refresh(caption)
+        return caption
+
+    @app.put("/api/v1/admin/captions/{caption_id}", response_model=CaptionOutput, tags=["staff CMS"])
+    def update_caption(
+        caption_id: int,
+        payload: CaptionInput,
+        actor: Annotated[AdminUser, Depends(translation_manager)],
+        db: Session = Depends(get_db),
+    ):
+        caption = db.get(SermonCaption, caption_id)
+        if caption is None:
+            raise HTTPException(status_code=404, detail="Caption not found")
+        if db.get(Sermon, payload.sermon_id) is None:
+            raise HTTPException(status_code=404, detail="Sermon not found")
+        validate_caption_content(payload.file_format, payload.content)
+        for field, value in payload.model_dump().items():
+            setattr(caption, field, value)
+        caption.approved_by_id = None
+        caption.approved_at = None
+        record_audit(db, actor, "update", "sermon_caption", caption.id)
+        db.commit()
+        db.refresh(caption)
+        return caption
+
+    @app.patch("/api/v1/admin/captions/{caption_id}/review", response_model=CaptionOutput, tags=["staff CMS"])
+    def review_caption(
+        caption_id: int,
+        payload: CaptionReviewInput,
+        actor: Annotated[AdminUser, Depends(translation_approver)],
+        db: Session = Depends(get_db),
+    ):
+        caption = db.get(SermonCaption, caption_id)
+        if caption is None:
+            raise HTTPException(status_code=404, detail="Caption not found")
+        caption.status = payload.status
+        caption.approved_by_id = actor.id if payload.status == "approved" else None
+        caption.approved_at = datetime.now(timezone.utc) if payload.status == "approved" else None
+        record_audit(db, actor, f"{payload.status}_caption", "sermon_caption", caption.id)
+        db.commit()
+        db.refresh(caption)
+        return caption
+
+    def payroll_values(payload: PayrollInput) -> dict[str, int]:
+        gross_ugx = payload.salary_ugx + payload.allowances_ugx
+        return {**payload.model_dump(), "gross_ugx": gross_ugx, "net_ugx": gross_ugx - payload.deductions_ugx - payload.paye_ugx - payload.nssf_ugx}
+
+    def require_active_member(db: Session, member_id: int) -> Member:
+        member = db.get(Member, member_id)
+        if member is None or member.status != "active":
+            raise HTTPException(status_code=404, detail="Active member not found")
+        return member
+
+    @app.get("/api/v1/admin/payroll", response_model=list[PayrollOutput], tags=["payroll"])
+    def list_payroll(
+        actor: Annotated[AdminUser, Depends(payroll_reader)],
+        period_start: date | None = None,
+        period_end: date | None = None,
+        db: Session = Depends(get_db),
+    ):
+        query = select(PayrollRecord)
+        if period_start:
+            query = query.where(PayrollRecord.period_start >= period_start)
+        if period_end:
+            query = query.where(PayrollRecord.period_end <= period_end)
+        records = db.scalars(query.order_by(PayrollRecord.period_end.desc(), PayrollRecord.id.desc())).all()
+        for record in records:
+            record_audit(db, actor, "view", "payroll", record.id)
+        db.commit()
+        return records
+
+    @app.post("/api/v1/admin/payroll", response_model=PayrollOutput, status_code=201, tags=["payroll"])
+    def create_payroll(
+        payload: PayrollInput,
+        actor: Annotated[AdminUser, Depends(payroll_editor)],
+        db: Session = Depends(get_db),
+    ):
+        require_active_member(db, payload.member_id)
+        record = PayrollRecord(**payroll_values(payload), created_by_id=actor.id, updated_by_id=actor.id)
+        db.add(record)
+        db.flush()
+        record_audit(db, actor, "create", "payroll", record.id)
+        try:
+            db.commit()
+        except IntegrityError as exc:
+            db.rollback()
+            raise HTTPException(status_code=409, detail="Payroll already exists for this member and period") from exc
+        db.refresh(record)
+        return record
+
+    @app.put("/api/v1/admin/payroll/{payroll_id}", response_model=PayrollOutput, tags=["payroll"])
+    def update_payroll(
+        payroll_id: int,
+        payload: PayrollInput,
+        actor: Annotated[AdminUser, Depends(payroll_editor)],
+        db: Session = Depends(get_db),
+    ):
+        record = db.get(PayrollRecord, payroll_id)
+        if record is None:
+            raise HTTPException(status_code=404, detail="Payroll record not found")
+        require_active_member(db, payload.member_id)
+        for field, value in payroll_values(payload).items():
+            setattr(record, field, value)
+        record.updated_by_id = actor.id
+        record_audit(db, actor, "update", "payroll", record.id)
+        db.commit()
+        db.refresh(record)
+        return record
+
+    @app.get("/api/v1/admin/payroll/report", response_model=PayrollReportOutput, tags=["payroll"])
+    def payroll_report(
+        period_start: date,
+        period_end: date,
+        actor: Annotated[AdminUser, Depends(payroll_reader)],
+        db: Session = Depends(get_db),
+    ):
+        if period_end < period_start:
+            raise HTTPException(status_code=422, detail="Report period end must be on or after the start")
+        records = db.scalars(select(PayrollRecord).where(PayrollRecord.period_start >= period_start, PayrollRecord.period_end <= period_end)).all()
+        record_audit(db, actor, "view_report", "payroll", 0)
+        db.commit()
+        return PayrollReportOutput(
+            period_start=period_start,
+            period_end=period_end,
+            record_count=len(records),
+            gross_ugx=sum(record.gross_ugx for record in records),
+            allowances_ugx=sum(record.allowances_ugx for record in records),
+            deductions_ugx=sum(record.deductions_ugx for record in records),
+            paye_ugx=sum(record.paye_ugx for record in records),
+            nssf_ugx=sum(record.nssf_ugx for record in records),
+            net_ugx=sum(record.net_ugx for record in records),
+        )
+
+    @app.get("/api/v1/admin/payroll/{payroll_id}/payslip", tags=["payroll"])
+    def download_payslip(
+        payroll_id: int,
+        actor: Annotated[AdminUser, Depends(payroll_reader)],
+        db: Session = Depends(get_db),
+    ):
+        record = db.get(PayrollRecord, payroll_id)
+        if record is None:
+            raise HTTPException(status_code=404, detail="Payroll record not found")
+        member = require_active_member(db, record.member_id)
+        profile = json.loads(decrypt_text(member.encrypted_profile))
+        record_audit(db, actor, "view_payslip", "payroll", record.id)
+        db.commit()
+        pdf = render_payslip_pdf(
+            church_name="Bwala Deliverance and Healing Ministries International",
+            employee_name=profile.get("name", f"Member #{member.id}"),
+            period=f"{record.period_start} to {record.period_end}",
+            salary_ugx=record.salary_ugx,
+            allowances_ugx=record.allowances_ugx,
+            deductions_ugx=record.deductions_ugx,
+            paye_ugx=record.paye_ugx,
+            nssf_ugx=record.nssf_ugx,
+            gross_ugx=record.gross_ugx,
+            net_ugx=record.net_ugx,
+        )
+        return Response(content=pdf, media_type="application/pdf", headers={"Content-Disposition": f"attachment; filename=payslip-{record.id}.pdf"})
+
+    @app.get("/api/v1/admin/counseling-appointments", response_model=list[CounselingAppointmentOutput], tags=["counseling"])
+    def list_counseling_appointments(
+        actor: Annotated[AdminUser, Depends(counseling_manager)],
+        db: Session = Depends(get_db),
+    ):
+        query = select(CounselingAppointment).order_by(CounselingAppointment.appointment_at.desc())
+        if actor.role == "safeguarding_lead":
+            query = query.where(CounselingAppointment.assigned_counselor_id == actor.id)
+        return db.scalars(query).all()
+
+    @app.post("/api/v1/admin/counseling-appointments", response_model=CounselingAppointmentOutput, status_code=201, tags=["counseling"])
+    def create_counseling_appointment(
+        payload: CounselingAppointmentInput,
+        actor: Annotated[AdminUser, Depends(counseling_manager)],
+        db: Session = Depends(get_db),
+    ):
+        require_active_member(db, payload.counselee_id)
+        counselor = db.get(AdminUser, payload.assigned_counselor_id)
+        if counselor is None or not counselor.is_active or counselor.role != payload.assigned_counselor_role:
+            raise HTTPException(status_code=422, detail="Assigned counselor does not match an active approved counselor role")
+        if actor.role == "safeguarding_lead" and payload.assigned_counselor_id != actor.id:
+            raise HTTPException(status_code=403, detail="Safeguarding Lead accounts may create referrals only for themselves")
+        appointment = CounselingAppointment(**payload.model_dump(), created_by_id=actor.id)
+        db.add(appointment)
+        db.flush()
+        record_audit(db, actor, "create", "counseling_appointment", appointment.id)
+        db.commit()
+        db.refresh(appointment)
+        return appointment
+
+    @app.put("/api/v1/admin/counseling-appointments/{appointment_id}", response_model=CounselingAppointmentOutput, tags=["counseling"])
+    def update_counseling_appointment(
+        appointment_id: int,
+        payload: CounselingAppointmentInput,
+        actor: Annotated[AdminUser, Depends(counseling_manager)],
+        db: Session = Depends(get_db),
+    ):
+        appointment = db.get(CounselingAppointment, appointment_id)
+        if appointment is None:
+            raise HTTPException(status_code=404, detail="Counseling appointment not found")
+        if actor.role == "safeguarding_lead" and appointment.assigned_counselor_id != actor.id:
+            raise HTTPException(status_code=403, detail="Safeguarding Lead accounts may update their own referrals only")
+        require_active_member(db, payload.counselee_id)
+        counselor = db.get(AdminUser, payload.assigned_counselor_id)
+        if counselor is None or not counselor.is_active or counselor.role != payload.assigned_counselor_role:
+            raise HTTPException(status_code=422, detail="Assigned counselor does not match an active approved counselor role")
+        for field, value in payload.model_dump().items():
+            setattr(appointment, field, value)
+        record_audit(db, actor, "update", "counseling_appointment", appointment.id)
+        db.commit()
+        db.refresh(appointment)
+        return appointment
 
     @app.get("/api/v1/admin/events", response_model=list[EventOutput], tags=["staff CMS"])
     def list_all_events(

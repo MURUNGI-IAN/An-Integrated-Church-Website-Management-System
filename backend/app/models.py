@@ -113,6 +113,47 @@ class SitePage(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
 
+class ContentTranslation(Base):
+    __tablename__ = "content_translations"
+    __table_args__ = (
+        UniqueConstraint("entity_type", "entity_id", "field", "language", name="uq_content_translation_target"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entity_type: Mapped[str] = mapped_column(String(24), index=True)
+    entity_id: Mapped[int] = mapped_column(Integer, index=True)
+    field: Mapped[str] = mapped_column(String(32))
+    language: Mapped[str] = mapped_column(String(8), index=True)
+    value: Mapped[str] = mapped_column(Text)
+    source: Mapped[str] = mapped_column(String(16), default="human")
+    status: Mapped[str] = mapped_column(String(24), default="draft", index=True)
+    created_by_id: Mapped[int] = mapped_column(ForeignKey("admin_users.id"))
+    approved_by_id: Mapped[int | None] = mapped_column(ForeignKey("admin_users.id"), nullable=True)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class SermonCaption(Base):
+    __tablename__ = "sermon_captions"
+    __table_args__ = (
+        UniqueConstraint("sermon_id", "language", name="uq_sermon_caption_language"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    sermon_id: Mapped[int] = mapped_column(ForeignKey("sermons.id", ondelete="CASCADE"), index=True)
+    language: Mapped[str] = mapped_column(String(8), index=True)
+    file_format: Mapped[str] = mapped_column(String(8))
+    content: Mapped[str] = mapped_column(Text)
+    source: Mapped[str] = mapped_column(String(16), default="human")
+    status: Mapped[str] = mapped_column(String(24), default="draft", index=True)
+    created_by_id: Mapped[int] = mapped_column(ForeignKey("admin_users.id"))
+    approved_by_id: Mapped[int | None] = mapped_column(ForeignKey("admin_users.id"), nullable=True)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
 class Sermon(Base):
     __tablename__ = "sermons"
 
@@ -383,6 +424,29 @@ class FinanceEntry(Base):
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class PayrollRecord(Base):
+    __tablename__ = "payroll_records"
+    __table_args__ = (
+        UniqueConstraint("member_id", "period_start", "period_end", name="uq_payroll_member_period"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    member_id: Mapped[int] = mapped_column(ForeignKey("members.id"), index=True)
+    period_start: Mapped[date] = mapped_column(Date, index=True)
+    period_end: Mapped[date] = mapped_column(Date, index=True)
+    salary_ugx: Mapped[int] = mapped_column(Integer)
+    allowances_ugx: Mapped[int] = mapped_column(Integer, default=0)
+    deductions_ugx: Mapped[int] = mapped_column(Integer, default=0)
+    paye_ugx: Mapped[int] = mapped_column(Integer, default=0)
+    nssf_ugx: Mapped[int] = mapped_column(Integer, default=0)
+    gross_ugx: Mapped[int] = mapped_column(Integer)
+    net_ugx: Mapped[int] = mapped_column(Integer)
+    created_by_id: Mapped[int] = mapped_column(ForeignKey("admin_users.id"))
+    updated_by_id: Mapped[int] = mapped_column(ForeignKey("admin_users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
 class FinanceBudget(Base):
     __tablename__ = "finance_budgets"
     __table_args__ = (UniqueConstraint("fund", "category", "period_start", "period_end", name="uq_finance_budget_period"),)
@@ -452,6 +516,21 @@ class PastoralCareTask(Base):
     attendance_alert_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
     encrypted_details: Mapped[str] = mapped_column(Text)
     assigned_to_id: Mapped[int | None] = mapped_column(ForeignKey("admin_users.id"), nullable=True)
+    created_by_id: Mapped[int] = mapped_column(ForeignKey("admin_users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class CounselingAppointment(Base):
+    __tablename__ = "counseling_appointments"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    counselee_id: Mapped[int] = mapped_column(ForeignKey("members.id"), index=True)
+    appointment_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    appointment_type: Mapped[str] = mapped_column(String(24), index=True)
+    assigned_counselor_id: Mapped[int] = mapped_column(ForeignKey("admin_users.id"), index=True)
+    assigned_counselor_role: Mapped[str] = mapped_column(String(32))
+    status: Mapped[str] = mapped_column(String(16), default="booked", index=True)
     created_by_id: Mapped[int] = mapped_column(ForeignKey("admin_users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)

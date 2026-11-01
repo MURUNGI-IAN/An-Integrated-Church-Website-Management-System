@@ -1377,7 +1377,7 @@ async function downloadStaffDocument(documentRecord, button) {
   try {
     const token = sessionStorage.getItem('bwala_staff_token');
     const response = await fetch(`${apiBase}/api/v1/admin/documents/${documentRecord.id}/download`, {
-      headers: { Authorization: `******` },
+      headers: { Authorization: `Bearer ${token}` },
     });
     if (!response.ok) {
       const payload = await response.json().catch(() => ({}));
@@ -1897,7 +1897,161 @@ async function loadVolunteerVetting() {
   }
 }
 
-const loaders = { members: loadMembers, attendance: loadAttendancePanel, rota: loadRotaPanel, groups: loadGroups, children: loadChildPanel, safeguarding: loadSafeguardingReports, vetting: loadVolunteerVetting, alerts: loadAlerts, pages: loadPages, sermons: loadSermons, events: loadEvents, contact: loadContactInquiries, visitors: loadVisitorVisits, prayer: loadPrayerRequests, finance: loadFinance, 'care-tasks': loadPastoralCareTasks, resources: loadResourceBookings, documents: loadDocumentsAndCertificates, governance: loadGovernance, analytics: loadAnalytics, branches: loadBranches, institutions: loadInstitutionsMissions, audit: loadAudit };
+const workflowLanguageNames = { en: 'English', lg: 'Luganda', nyn: 'Runyankole', rw: 'Kinyarwanda', sw: 'Swahili' };
+
+async function loadTranslationWorkflow() {
+  const translationsList = document.querySelector('#translations-list');
+  const captionsList = document.querySelector('#captions-list');
+  try {
+    const [translations, captions] = await Promise.all([
+      apiRequest('/admin/translations'),
+      apiRequest('/admin/captions'),
+    ]);
+    translationsList.replaceChildren();
+    if (!translations.length) showEmpty(translationsList, 'No translation drafts have been added yet.');
+    translations.forEach((translation) => {
+      const row = addAdminRow(
+        translationsList,
+        `${translation.entity_type} #${translation.entity_id} · ${translation.field} · ${workflowLanguageNames[translation.language] || translation.language}`,
+        `${translation.status.replaceAll('_', ' ')} · ${translation.source === 'ai_draft' ? 'AI draft' : 'Human translation'} · ${translation.value.slice(0, 180)}`,
+      );
+      if (['admin', 'senior_pastor'].includes(currentStaffRole) && translation.status !== 'approved') {
+        const approve = document.createElement('button');
+        approve.type = 'button';
+        approve.textContent = 'Approve';
+        approve.addEventListener('click', async () => {
+          approve.disabled = true;
+          try {
+            await apiRequest(`/admin/translations/${translation.id}/review`, { method: 'PATCH', body: JSON.stringify({ status: 'approved' }) });
+            await loadTranslationWorkflow();
+          } catch (error) {
+            approve.textContent = error.message;
+            approve.disabled = false;
+          }
+        });
+        row.append(approve);
+      }
+    });
+
+    captionsList.replaceChildren();
+    if (!captions.length) showEmpty(captionsList, 'No caption files have been added yet.');
+    captions.forEach((caption) => {
+      const row = addAdminRow(
+        captionsList,
+        `Sermon #${caption.sermon_id} · ${workflowLanguageNames[caption.language]} · ${caption.file_format.toUpperCase()}`,
+        `${caption.status.replaceAll('_', ' ')} · ${caption.source === 'ai_draft' ? 'AI draft' : 'Human captions'}`,
+      );
+      if (['admin', 'senior_pastor'].includes(currentStaffRole) && caption.status !== 'approved') {
+        const approve = document.createElement('button');
+        approve.type = 'button';
+        approve.textContent = 'Approve';
+        approve.addEventListener('click', async () => {
+          approve.disabled = true;
+          try {
+            await apiRequest(`/admin/captions/${caption.id}/review`, { method: 'PATCH', body: JSON.stringify({ status: 'approved' }) });
+            await loadTranslationWorkflow();
+          } catch (error) {
+            approve.textContent = error.message;
+            approve.disabled = false;
+          }
+        });
+        row.append(approve);
+      }
+    });
+  } catch (error) {
+    showEmpty(translationsList, error.message);
+    showEmpty(captionsList, error.message);
+  }
+}
+
+async function loadPayroll() {
+  const list = document.querySelector('#payroll-list');
+  try {
+    const records = await apiRequest('/admin/payroll');
+    list.replaceChildren();
+    if (!records.length) return showEmpty(list, 'No payroll records have been added.');
+    records.forEach((record) => {
+      const row = addAdminRow(list, `Member #${record.member_id} · ${formatUgx(record.net_ugx)} net`, `${record.period_start} to ${record.period_end} · Gross ${formatUgx(record.gross_ugx)} · PAYE ${formatUgx(record.paye_ugx)} · NSSF ${formatUgx(record.nssf_ugx)}`);
+      if (['admin', 'finance_admin', 'senior_pastor'].includes(currentStaffRole)) {
+        const edit = document.createElement('button');
+        edit.type = 'button';
+        edit.textContent = 'Edit';
+        edit.addEventListener('click', () => {
+          const form = document.querySelector('#payroll-form');
+          form.elements.id.value = record.id;
+          form.elements.member_id.value = record.member_id;
+          form.elements.period_start.value = record.period_start;
+          form.elements.period_end.value = record.period_end;
+          form.elements.salary_ugx.value = record.salary_ugx;
+          form.elements.allowances_ugx.value = record.allowances_ugx;
+          form.elements.deductions_ugx.value = record.deductions_ugx;
+          form.elements.paye_ugx.value = record.paye_ugx;
+          form.elements.nssf_ugx.value = record.nssf_ugx;
+          form.querySelector('h3').textContent = 'Edit payroll';
+          form.querySelector('button[type="submit"]').textContent = 'Update payroll';
+          form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+        row.append(edit);
+      }
+      const download = document.createElement('button');
+      download.type = 'button';
+      download.textContent = 'Download payslip';
+      download.addEventListener('click', async () => {
+        download.disabled = true;
+        try {
+          const token = sessionStorage.getItem('bwala_staff_token');
+          const response = await fetch(`${apiBase}/api/v1/admin/payroll/${record.id}/payslip`, { headers: { Authorization: `Bearer ${token}` } });
+          if (!response.ok) throw new Error('Payslip download failed.');
+          const link = document.createElement('a');
+          link.href = URL.createObjectURL(await response.blob());
+          link.download = `payslip-${record.id}.pdf`;
+          link.click();
+          URL.revokeObjectURL(link.href);
+        } catch (error) {
+          download.textContent = error.message;
+        } finally {
+          download.disabled = false;
+        }
+      });
+      row.append(download);
+    });
+  } catch (error) {
+    showEmpty(list, error.message);
+  }
+}
+
+async function loadCounselingAppointments() {
+  const list = document.querySelector('#counseling-list');
+  try {
+    const appointments = await apiRequest('/admin/counseling-appointments');
+    list.replaceChildren();
+    if (!appointments.length) return showEmpty(list, 'No counseling appointments have been booked.');
+    appointments.forEach((appointment) => {
+      const row = addAdminRow(list, `Member #${appointment.counselee_id} · ${appointment.appointment_type.replaceAll('_', ' ')}`, `${new Date(appointment.appointment_at).toLocaleString('en-UG')} · Counselor #${appointment.assigned_counselor_id} · ${appointment.status}`);
+      const edit = document.createElement('button');
+      edit.type = 'button';
+      edit.textContent = 'Edit';
+      edit.addEventListener('click', () => {
+        const form = document.querySelector('#counseling-form');
+        form.elements.id.value = appointment.id;
+        form.elements.counselee_id.value = appointment.counselee_id;
+        form.elements.appointment_at.value = toLocalDateTime(appointment.appointment_at);
+        form.elements.appointment_type.value = appointment.appointment_type;
+        form.elements.assigned_counselor_id.value = appointment.assigned_counselor_id;
+        form.elements.assigned_counselor_role.value = appointment.assigned_counselor_role;
+        form.elements.status.value = appointment.status;
+        form.querySelector('h3').textContent = 'Edit appointment';
+        form.querySelector('button[type="submit"]').textContent = 'Update appointment';
+        form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+      row.append(edit);
+    });
+  } catch (error) {
+    showEmpty(list, error.message);
+  }
+}
+
+const loaders = { members: loadMembers, attendance: loadAttendancePanel, rota: loadRotaPanel, groups: loadGroups, children: loadChildPanel, safeguarding: loadSafeguardingReports, vetting: loadVolunteerVetting, alerts: loadAlerts, pages: loadPages, sermons: loadSermons, translations: loadTranslationWorkflow, events: loadEvents, contact: loadContactInquiries, visitors: loadVisitorVisits, prayer: loadPrayerRequests, finance: loadFinance, payroll: loadPayroll, 'care-tasks': loadPastoralCareTasks, counseling: loadCounselingAppointments, resources: loadResourceBookings, documents: loadDocumentsAndCertificates, governance: loadGovernance, analytics: loadAnalytics, branches: loadBranches, institutions: loadInstitutionsMissions, audit: loadAudit };
 
 async function activateTab(name) {
   document.querySelectorAll('[data-tab]').forEach((button) => {
@@ -1931,12 +2085,15 @@ function showConsole(user) {
     alerts: ['admin', 'editor', 'pastor'].includes(user.role),
     pages: ['admin', 'editor'].includes(user.role),
     sermons: ['admin', 'editor'].includes(user.role),
+    translations: ['admin', 'editor', 'senior_pastor'].includes(user.role),
     events: ['admin', 'editor'].includes(user.role),
     contact: ['admin', 'pastor'].includes(user.role),
     visitors: ['admin', 'pastor'].includes(user.role),
     prayer: ['admin', 'pastor'].includes(user.role),
     finance: ['admin', 'treasurer'].includes(user.role),
+    payroll: ['admin', 'finance_admin', 'senior_pastor', 'treasurer', 'board_chair'].includes(user.role),
     'care-tasks': ['admin', 'pastor'].includes(user.role),
+    counseling: ['admin', 'senior_pastor', 'associate_pastor', 'licensed_counselor', 'safeguarding_lead'].includes(user.role),
     resources: ['admin', 'editor', 'pastor'].includes(user.role),
     documents: ['admin', 'pastor'].includes(user.role),
     governance: ['admin', 'pastor'].includes(user.role),
@@ -1956,6 +2113,70 @@ function showConsole(user) {
 
 document.querySelectorAll('[data-tab]').forEach((button) => {
   button.addEventListener('click', () => activateTab(button.dataset.tab));
+});
+
+const translationForm = document.querySelector('#translation-form');
+translationForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const button = translationForm.querySelector('button[type="submit"]');
+  const values = new FormData(translationForm);
+  button.disabled = true;
+  try {
+    await apiRequest('/admin/translations', {
+      method: 'POST',
+      body: JSON.stringify({
+        entity_type: values.get('entity_type'),
+        entity_id: Number(values.get('entity_id')),
+        field: values.get('field'),
+        language: values.get('language'),
+        value: values.get('value'),
+        source: values.get('source'),
+        status: values.get('status'),
+      }),
+    });
+    setFormStatus(translationForm, 'Translation saved.');
+    translationForm.reset();
+    await loadTranslationWorkflow();
+  } catch (error) {
+    setFormStatus(translationForm, error.message, true);
+  } finally {
+    button.disabled = false;
+  }
+});
+
+const captionForm = document.querySelector('#caption-form');
+captionForm.elements.caption_file.addEventListener('change', async () => {
+  const file = captionForm.elements.caption_file.files[0];
+  if (!file) return;
+  const extension = file.name.toLowerCase().endsWith('.vtt') ? 'vtt' : 'srt';
+  captionForm.elements.file_format.value = extension;
+  captionForm.elements.content.value = await file.text();
+});
+captionForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const button = captionForm.querySelector('button[type="submit"]');
+  const values = new FormData(captionForm);
+  button.disabled = true;
+  try {
+    await apiRequest('/admin/captions', {
+      method: 'POST',
+      body: JSON.stringify({
+        sermon_id: Number(values.get('sermon_id')),
+        language: values.get('language'),
+        file_format: values.get('file_format'),
+        content: values.get('content'),
+        source: values.get('source'),
+        status: values.get('status'),
+      }),
+    });
+    setFormStatus(captionForm, 'Captions saved.');
+    captionForm.reset();
+    await loadTranslationWorkflow();
+  } catch (error) {
+    setFormStatus(captionForm, error.message, true);
+  } finally {
+    button.disabled = false;
+  }
 });
 
 document.querySelector('#group-branch-filter').addEventListener('change', loadGroups);
@@ -2333,6 +2554,8 @@ function connectPhase3JsonForm(formId, endpoint, makePayload, refresh) {
     const heading = form.querySelector('h3');
     if (form.id === 'resource-form') heading.textContent = 'Add resource';
     if (form.id === 'governance-meeting-form') heading.textContent = 'Record a meeting';
+    if (form.id === 'payroll-form') { heading.textContent = 'Record payroll'; submit.textContent = defaultSubmitText; }
+    if (form.id === 'counseling-form') { heading.textContent = 'Book appointment'; submit.textContent = defaultSubmitText; }
   });
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -2357,8 +2580,44 @@ function connectPhase3JsonForm(formId, endpoint, makePayload, refresh) {
 const today = localDateValue();
 ['#finance-entry-form [name="entry_date"]', '#finance-budget-form [name="period_start"]', '#finance-budget-form [name="period_end"]',
   '#finance-report-form [name="period_start"]', '#finance-report-form [name="period_end"]', '#certificate-form [name="issued_on"]',
-  '#offering-count-form [name="service_date"]', '#governance-meeting-form [name="meeting_date"]']
-  .forEach((selector) => { document.querySelector(selector).value = today; });
+  '#offering-count-form [name="service_date"]', '#governance-meeting-form [name="meeting_date"]',
+  '#payroll-form [name="period_start"]', '#payroll-form [name="period_end"]', '#payroll-report-form [name="period_start"]', '#payroll-report-form [name="period_end"]']
+  .forEach((selector) => { const field = document.querySelector(selector); if (field) field.value = today; });
+
+connectPhase3JsonForm('#payroll-form', '/admin/payroll', (values) => ({
+  member_id: Number(values.get('member_id')),
+  period_start: values.get('period_start'),
+  period_end: values.get('period_end'),
+  salary_ugx: Number(values.get('salary_ugx')),
+  allowances_ugx: Number(values.get('allowances_ugx') || 0),
+  deductions_ugx: Number(values.get('deductions_ugx') || 0),
+  paye_ugx: Number(values.get('paye_ugx') || 0),
+  nssf_ugx: Number(values.get('nssf_ugx') || 0),
+}), loadPayroll);
+
+document.querySelector('#payroll-report-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const values = new FormData(form);
+  const output = document.querySelector('#payroll-report-output');
+  try {
+    const report = await apiRequest(`/admin/payroll/report?period_start=${encodeURIComponent(values.get('period_start'))}&period_end=${encodeURIComponent(values.get('period_end'))}`);
+    output.replaceChildren();
+    addAdminRow(output, `${report.record_count} records · Gross ${formatUgx(report.gross_ugx)}`, `Net ${formatUgx(report.net_ugx)} · PAYE ${formatUgx(report.paye_ugx)} · NSSF ${formatUgx(report.nssf_ugx)} · Deductions ${formatUgx(report.deductions_ugx)}`);
+    setFormStatus(form, 'Report generated.');
+  } catch (error) {
+    setFormStatus(form, error.message, true);
+  }
+});
+
+connectPhase3JsonForm('#counseling-form', '/admin/counseling-appointments', (values) => ({
+  counselee_id: Number(values.get('counselee_id')),
+  appointment_at: new Date(values.get('appointment_at')).toISOString(),
+  appointment_type: values.get('appointment_type'),
+  assigned_counselor_id: Number(values.get('assigned_counselor_id')),
+  assigned_counselor_role: values.get('assigned_counselor_role'),
+  status: values.get('status'),
+}), loadCounselingAppointments);
 
 connectPhase3JsonForm('#finance-entry-form', '/admin/finance/entries', (values) => ({
   entry_type: values.get('entry_type'),

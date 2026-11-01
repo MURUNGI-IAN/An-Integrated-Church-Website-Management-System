@@ -5,6 +5,38 @@ const configuredApiBase = document.querySelector('meta[name="api-base-url"]')?.c
 const apiBase = (configuredApiBase || (localHosts.includes(window.location.hostname)
   ? `${window.location.protocol}//${window.location.hostname}:8000`
   : window.location.origin)).replace(/\/+$/, '');
+const languageSelect = document.querySelector('#language-select');
+const supportedLanguages = ['en', 'lg', 'nyn', 'rw'];
+const languageCatalog = {
+  en: { planVisit: 'Plan a visit', messages: 'Messages', events: 'Events', gatherings: 'Gatherings', giving: 'Giving', contact: 'Contact', safeguarding: 'Safeguarding report', language: 'Language', callChurch: 'Call the church' },
+  lg: { planVisit: 'Tegeka okukyala', messages: 'Obubaka', events: 'Ebikujjuko', gatherings: 'Okukuŋŋaana', giving: 'Okusonda', contact: 'Tukwatagane', safeguarding: 'Okuloopa obukuumi', language: 'Olulimi', callChurch: 'Kuba essimu ku kkanisa' },
+  nyn: { planVisit: 'Teebekanise okutaayaaya', messages: 'Obutumwa', events: 'Ebikorwa', gatherings: 'Okuterana', giving: 'Okuha', contact: 'Tukwatane', safeguarding: 'Kushoborora oburinzi', language: 'Orurimi', callChurch: 'Kora omukago n’ekanisa' },
+  rw: { planVisit: 'Tegura gusura', messages: 'Ubutumwa', events: 'Ibirori', gatherings: 'Amateraniro', giving: 'Gutanga', contact: 'Twandikire', safeguarding: 'Raporo y’umutekano', language: 'Ururimi', callChurch: 'Hamagara itorero' },
+};
+function detectedLanguage() {
+  const saved = localStorage.getItem('bwala_language');
+  if (supportedLanguages.includes(saved)) return saved;
+  const browserLanguage = (navigator.languages || [navigator.language]).map((value) => value.toLowerCase().split('-')[0]);
+  return browserLanguage.find((value) => supportedLanguages.includes(value)) || 'en';
+}
+let currentLanguage = detectedLanguage();
+function applyLanguage(language) {
+  currentLanguage = supportedLanguages.includes(language) ? language : 'en';
+  localStorage.setItem('bwala_language', currentLanguage);
+  document.documentElement.lang = currentLanguage;
+  if (languageSelect) languageSelect.value = currentLanguage;
+  const labels = languageCatalog[currentLanguage];
+  document.querySelectorAll('[data-i18n]').forEach((element) => {
+    const value = labels[element.dataset.i18n];
+    if (value) element.firstChild.textContent = value;
+  });
+}
+applyLanguage(currentLanguage);
+languageSelect?.addEventListener('change', () => {
+  applyLanguage(languageSelect.value);
+  if (cmsPageSlug) loadCmsPage(cmsPageSlug);
+  else loadSermons();
+});
 const cmsPageSlug = new URLSearchParams(window.location.search).get('page');
 const availabilityToken = new URLSearchParams(window.location.hash.slice(1)).get('availability');
 const offlineStatus = document.querySelector('#offline-status');
@@ -77,7 +109,7 @@ function messageText(container, heading, detail) {
 async function loadWelcomeNote() {
   const section = document.querySelector('#church-note');
   try {
-    const page = await apiRequest('/pages/welcome-note');
+    const page = await apiRequest(`/pages/welcome-note?language=${currentLanguage}`);
     document.querySelector('#church-note-title').textContent = page.title;
     document.querySelector('#church-note-body').textContent = page.body;
     section.hidden = false;
@@ -115,7 +147,7 @@ async function loadCmsPage(slug) {
   });
   pageView.hidden = false;
   try {
-    const page = await apiRequest(`/pages/${encodeURIComponent(slug)}`);
+    const page = await apiRequest(`/pages/${encodeURIComponent(slug)}?language=${currentLanguage}`);
     document.querySelector('#cms-page-title').textContent = page.title;
     document.title = `${page.title} | Bwala Deliverance and Healing Ministries`;
     const paragraphs = page.body.split(/\r?\n\s*\r?\n/).map((text) => text.trim()).filter(Boolean);
@@ -245,6 +277,7 @@ function renderSermon(sermon) {
 async function loadSermons() {
   const requestNumber = ++sermonRequestNumber;
   const params = new URLSearchParams({ limit: '30' });
+  params.set('language', currentLanguage);
   if (sermonSearch.value.trim()) params.set('q', sermonSearch.value.trim());
   archiveStatus.textContent = 'Loading messages...';
   try {

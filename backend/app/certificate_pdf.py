@@ -126,3 +126,38 @@ def render_certificate_pdf(
     ])
     document.build(story, onFirstPage=draw_border, onLaterPages=draw_border)
     return buffer.getvalue()
+
+
+def render_payslip_pdf(
+    *,
+    church_name: str,
+    employee_name: str,
+    period: str,
+    salary_ugx: int,
+    allowances_ugx: int,
+    deductions_ugx: int,
+    paye_ugx: int,
+    nssf_ugx: int,
+    gross_ugx: int,
+    net_ugx: int,
+) -> bytes:
+    styles = getSampleStyleSheet()
+    styles.add(ParagraphStyle(name="PayslipHeading", parent=styles["Heading1"], fontName="Vera-Bold", textColor=colors.HexColor("#20362c"), spaceAfter=8 * mm))
+    styles.add(ParagraphStyle(name="PayslipBody", parent=styles["Normal"], fontName="Vera", fontSize=11, leading=16, textColor=colors.HexColor("#20362c")))
+    buffer = BytesIO()
+    document = SimpleDocTemplate(buffer, pagesize=A4, leftMargin=25 * mm, rightMargin=25 * mm, topMargin=22 * mm, bottomMargin=22 * mm, title=f"Payslip - {employee_name}", author=church_name)
+
+    def amount(value: int) -> str:
+        return f"{value:,} UGX"
+
+    story = [
+        Paragraph(escape(church_name), styles["PayslipHeading"]),
+        Paragraph("Staff payslip", styles["PayslipHeading"]),
+        Paragraph(f"Employee: {escape(employee_name)}<br/>Period: {escape(period)}", styles["PayslipBody"]),
+        Spacer(1, 8 * mm),
+        Paragraph(f"Basic salary: {amount(salary_ugx)}<br/>Allowances: {amount(allowances_ugx)}<br/><b>Gross pay: {amount(gross_ugx)}</b><br/><br/>Other deductions: {amount(deductions_ugx)}<br/>PAYE: {amount(paye_ugx)}<br/>NSSF: {amount(nssf_ugx)}<br/><b>Net pay: {amount(net_ugx)}</b>", styles["PayslipBody"]),
+        Spacer(1, 8 * mm),
+        Paragraph("PAYE and NSSF values are recorded inputs and must be confirmed by the finance team before production use.", styles["PayslipBody"]),
+    ]
+    document.build(story)
+    return buffer.getvalue()
