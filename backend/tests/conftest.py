@@ -2,7 +2,7 @@ from collections.abc import Iterator
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
@@ -32,6 +32,20 @@ def client(configured: None) -> Iterator[TestClient]:
         poolclass=StaticPool,
     )
     Base.metadata.create_all(bind=test_engine)
+    from app.models import AdminUser, Branch
+    from app.security import hash_password
+
+    with Session(test_engine) as db:
+        bootstrap = AdminUser(
+            email="test-branch-bootstrap@example.org",
+            display_name="Test Branch Bootstrap",
+            role="admin",
+            password_hash=hash_password("long-test-password-2026"),
+        )
+        db.add(bootstrap)
+        db.flush()
+        db.add(Branch(name="Test Local Branch", location="Test", created_by_id=bootstrap.id))
+        db.commit()
     test_app = create_app(test_engine)
     test_app.state.database_engine = test_engine
     with TestClient(test_app) as test_client:
@@ -41,11 +55,16 @@ def client(configured: None) -> Iterator[TestClient]:
 
 
 def provision_user(client: TestClient, email: str, role: str = "admin") -> str:
-    from app.models import AdminUser
+    from app.models import AdminUser, Branch
     from app.security import hash_password
 
     with Session(client.app.state.database_engine) as db:
-        db.add(AdminUser(email=email, display_name="Test staff", role=role, password_hash=hash_password("long-test-password-2026")))
+        user = AdminUser(email=email, display_name="Test staff", role=role, password_hash=hash_password("long-test-password-2026"))
+        db.add(user)
+        db.flush()
+        branch = db.scalar(select(Branch).where(Branch.is_active.is_(True)).order_by(Branch.id))
+        assert branch is not None
+        user.branch_id = branch.id
         db.commit()
     response = client.post("/api/v1/auth/token", json={"email": email, "password": "long-test-password-2026"})
     assert response.status_code == 200, response.text

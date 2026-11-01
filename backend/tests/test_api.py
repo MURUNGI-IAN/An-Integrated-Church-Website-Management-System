@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models import AdminUser, AuditLog, AvailabilityInvite, Branch, ChildAttendance, ChildProfile, ChurchEvent, ChurchResource, ContactInquiry, EmergencyAlert, EventRegistration, FinanceBudget, FinanceEntry, FinancePledge, GovernanceMeeting, GovernanceResolution, GroupWaitlist, Member, MemberAttendance, MemberCertificate, MemberCommunicationConsent, NewsletterSubscriber, OfferingCountBatch, PastoralCareTask, PrayerRequest, ResourceBooking, RotaAssignment, Sermon, SmallGroup, StaffDocument, VisitorVisit, VolunteerAvailability
+from app.models import AdminUser, AuditLog, AvailabilityInvite, Branch, ChildAttendance, ChildProfile, ChurchEvent, ChurchResource, ContactInquiry, EmergencyAlert, EventRegistration, FinanceBudget, FinanceEntry, FinancePledge, GovernanceMeeting, GovernanceResolution, GroupWaitlist, Member, MemberAttendance, MemberCertificate, MemberCommunicationConsent, NewsletterSubscriber, OfferingCountBatch, PastoralCareTask, PrayerRequest, ResourceBooking, RotaAssignment, SafeguardingReport, Sermon, SitePage, SmallGroup, StaffDocument, VisitorVisit, VolunteerAvailability, VolunteerVettingRecord
 from app.security import decrypt_text, encrypt_text
 from tests.conftest import provision_user
 
@@ -51,6 +51,9 @@ def test_cms_requires_provisioned_staff_and_publication(client: TestClient) -> N
 
 
 def test_event_registration_checks_consent_duplicates_and_capacity(client: TestClient) -> None:
+    editor_token = provision_user(client, "event-editor@example.org", role="editor")
+    editor_headers = {"Authorization": f"Bearer {editor_token}"}
+    editor_branch_id = client.get("/api/v1/auth/me", headers=editor_headers).json()["branch_id"]
     with Session(client.app.state.database_engine) as db:
         event = ChurchEvent(
             title="Community day",
@@ -58,6 +61,7 @@ def test_event_registration_checks_consent_duplicates_and_capacity(client: TestC
             starts_at=datetime.now(timezone.utc) + timedelta(days=2),
             capacity=1,
             is_published=True,
+            branch_id=editor_branch_id,
         )
         db.add(event)
         db.commit()
@@ -81,10 +85,9 @@ def test_event_registration_checks_consent_duplicates_and_capacity(client: TestC
         assert "member@example.org" not in stored.encrypted_payload
         assert json.loads(decrypt_text(stored.encrypted_payload)) == {"name": "A Member", "email": "member@example.org"}
 
-    editor_token = provision_user(client, "event-editor@example.org", role="editor")
     attendees = client.get(
         f"/api/v1/admin/events/{event_id}/registrations",
-        headers={"Authorization": f"Bearer {editor_token}"},
+        headers=editor_headers,
     )
     assert attendees.status_code == 200
     assert attendees.json()[0]["email"] == "member@example.org"
@@ -559,10 +562,11 @@ def test_volunteer_availability_invites_are_hashed_single_use_and_expiring(clien
     assert member.status_code == 201, member.text
     member_id = member.json()["id"]
     invite_url = "/api/v1/admin/volunteer-availability/invites"
+    service_date = (datetime.now(timezone.utc).date() + timedelta(days=7)).isoformat()
     invite_request = {
         "member_id": member_id,
         "service_name": "Sunday Worship",
-        "service_date": "2026-10-18",
+        "service_date": service_date,
     }
     assert client.post(invite_url, json=invite_request).status_code == 401
     created = client.post(invite_url, json=invite_request, headers=headers)
@@ -578,7 +582,7 @@ def test_volunteer_availability_invites_are_hashed_single_use_and_expiring(clien
     inspect_url = "/api/v1/volunteer-availability/invites/inspect"
     details = client.post(inspect_url, json={"token": token})
     assert details.status_code == 200, details.text
-    assert details.json() == {"service_name": "Sunday Worship", "service_date": "2026-10-18"}
+    assert details.json() == {"service_name": "Sunday Worship", "service_date": service_date}
     response_url = "/api/v1/volunteer-availability/respond"
     recorded = client.post(response_url, json={"token": token, "is_available": False})
     assert recorded.status_code == 200, recorded.text
@@ -592,7 +596,8 @@ def test_volunteer_availability_invites_are_hashed_single_use_and_expiring(clien
         assert availability.is_available is False
         assert availability.updated_by_id is None
 
-    expiring = client.post(invite_url, json={**invite_request, "service_date": "2026-10-25"}, headers=headers)
+    expiring_service_date = (datetime.now(timezone.utc).date() + timedelta(days=14)).isoformat()
+    expiring = client.post(invite_url, json={**invite_request, "service_date": expiring_service_date}, headers=headers)
     assert expiring.status_code == 201
     with Session(client.app.state.database_engine) as db:
         expired_invite = db.scalar(select(AvailabilityInvite).where(AvailabilityInvite.id != invite.id))
@@ -666,7 +671,13 @@ def test_communication_consent_is_explicit_channel_scoped_and_audited(client: Te
 
     defaults = client.get(url, headers=admin_headers)
     assert defaults.status_code == 200
-    assert {item["channel"]: item["is_consented"] for item in defaults.json()} == {"email": False, "sms": False}
+    assert {item["channel"]: item["is_consented"] for item in defaults.json()} == {
+        "email": False, "sms": False, "whatsapp": False,
+    }
+    assert all(item["delivery_frequency"] == "essential_only" for item in defaults.json())
+    assert all(item["quiet_hours_start"] == "21:00" for item in defaults.json())
+    assert all(item["quiet_hours_end"] == "07:00" for item in defaults.json())
+    assert all(item["timezone"] == "Africa/Kampala" for item in defaults.json())
     assert all(item["updated_at"] is None for item in defaults.json())
 
     editor_token = provision_user(client, "consent-editor@example.org", role="editor")
@@ -683,6 +694,24 @@ def test_communication_consent_is_explicit_channel_scoped_and_audited(client: Te
         "email": "paper_form", "sms": "in_person",
     }
 
+    saved_preferences = client.put(url, json={
+        "preferences": [{
+            "channel": "whatsapp",
+            "is_consented": True,
+            "consent_source": "paper_form",
+            "delivery_frequency": "weekly",
+            "quiet_hours_start": "20:30",
+            "quiet_hours_end": "07:30",
+        }],
+    }, headers=admin_headers)
+    assert saved_preferences.status_code == 200, saved_preferences.text
+    whatsapp = saved_preferences.json()[0]
+    assert whatsapp["channel"] == "whatsapp"
+    assert whatsapp["delivery_frequency"] == "weekly"
+    assert whatsapp["quiet_hours_start"] == "20:30"
+    assert whatsapp["quiet_hours_end"] == "07:30"
+    assert whatsapp["timezone"] == "Africa/Kampala"
+
     no_phone = client.post("/api/v1/admin/members", json={
         "name": "Email Only", "email": "email-only@example.org", "phone": None, "consent_confirmed": True,
     }, headers=admin_headers)
@@ -691,6 +720,10 @@ def test_communication_consent_is_explicit_channel_scoped_and_audited(client: Te
         "preferences": [{"channel": "sms", "is_consented": True, "consent_source": "in_person"}],
     }, headers=admin_headers)
     assert invalid_sms.status_code == 422
+    invalid_whatsapp = client.put(f"/api/v1/admin/members/{no_phone.json()['id']}/communication-consents", json={
+        "preferences": [{"channel": "whatsapp", "is_consented": True, "consent_source": "in_person"}],
+    }, headers=admin_headers)
+    assert invalid_whatsapp.status_code == 422
     invalid_source = client.put(url, json={
         "preferences": [{"channel": "email", "is_consented": True, "consent_source": "not_provided"}],
     }, headers=admin_headers)
@@ -703,10 +736,10 @@ def test_communication_consent_is_explicit_channel_scoped_and_audited(client: Te
     assert revoked.json()[0]["is_consented"] is False
     assert revoked.json()[0]["consented_at"] is None
     with Session(client.app.state.database_engine) as db:
-        assert db.scalar(select(func.count()).select_from(MemberCommunicationConsent)) == 2
+        assert db.scalar(select(func.count()).select_from(MemberCommunicationConsent)) == 3
         assert db.scalar(select(func.count()).select_from(AuditLog).where(
             AuditLog.entity_type == "member", AuditLog.action == "communication_consent_update",
-        )) == 2
+        )) == 3
 
 
 def test_small_group_finder_filters_published_groups_and_approximate_distance(client: TestClient) -> None:
@@ -1085,13 +1118,15 @@ def test_analytics_overview_is_aggregated_role_limited_and_period_scoped(client:
     with Session(client.app.state.database_engine) as db:
         actor = db.scalar(select(AdminUser).where(AdminUser.email == "analytics-pastor@example.org"))
         assert actor is not None
+        branch_id = actor.branch_id
         active_members = [
-            Member(encrypted_profile=encrypt_text(json.dumps({"name": f"Private Member {index}"})))
+            Member(encrypted_profile=encrypt_text(json.dumps({"name": f"Private Member {index}"})), branch_id=branch_id)
             for index in range(2)
         ]
         inactive_member = Member(
             encrypted_profile=encrypt_text(json.dumps({"name": "Inactive Member"})),
             status="inactive",
+            branch_id=branch_id,
         )
         db.add_all([*active_members, inactive_member])
         db.flush()
@@ -1102,6 +1137,7 @@ def test_analytics_overview_is_aggregated_role_limited_and_period_scoped(client:
             location="Church hall",
             starts_at=datetime(2026, 10, 20, tzinfo=timezone.utc),
             is_published=True,
+                branch_id=branch_id,
         )
         draft_event = ChurchEvent(
             title="Private draft event",
@@ -1109,6 +1145,7 @@ def test_analytics_overview_is_aggregated_role_limited_and_period_scoped(client:
             location="Church hall",
             starts_at=datetime(2026, 10, 21, tzinfo=timezone.utc),
             is_published=False,
+                branch_id=branch_id,
         )
         published_group = SmallGroup(
             name="Published group",
@@ -1119,6 +1156,7 @@ def test_analytics_overview_is_aggregated_role_limited_and_period_scoped(client:
             age_group="Adults",
             is_open=True,
             is_published=True,
+                branch_id=branch_id,
             updated_by_id=actor.id,
         )
         private_group = SmallGroup(
@@ -1130,6 +1168,7 @@ def test_analytics_overview_is_aggregated_role_limited_and_period_scoped(client:
             age_group="Adults",
             is_open=True,
             is_published=False,
+                branch_id=branch_id,
             updated_by_id=actor.id,
         )
         meeting = GovernanceMeeting(
@@ -1139,6 +1178,7 @@ def test_analytics_overview_is_aggregated_role_limited_and_period_scoped(client:
             status="held",
             encrypted_minutes=encrypt_text(json.dumps({"minutes": "Confidential minutes"})),
             created_by_id=actor.id,
+                branch_id=branch_id,
         )
         db.add_all([event, draft_event, published_group, private_group, meeting])
         db.flush()
@@ -1148,24 +1188,28 @@ def test_analytics_overview_is_aggregated_role_limited_and_period_scoped(client:
                 service_name="Sunday service",
                 service_date=date(2026, 10, 5),
                 check_in_method="manual",
+                    branch_id=branch_id,
             ),
             MemberAttendance(
                 member_id=active_members[0].id,
                 service_name="Sunday service",
                 service_date=date(2026, 10, 12),
                 check_in_method="manual",
+                    branch_id=branch_id,
             ),
             MemberAttendance(
                 member_id=active_members[1].id,
                 service_name="Sunday service",
                 service_date=date(2026, 10, 12),
                 check_in_method="manual",
+                    branch_id=branch_id,
             ),
             MemberAttendance(
                 member_id=active_members[1].id,
                 service_name="Outside period",
                 service_date=date(2026, 9, 30),
                 check_in_method="manual",
+                    branch_id=branch_id,
             ),
             VisitorVisit(
                 encrypted_payload=encrypt_text(json.dumps({"name": "Private visitor"})),
@@ -1249,9 +1293,11 @@ def test_branch_registry_is_admin_managed_audited_and_archivable(client: TestCli
     pastor_headers = {"Authorization": f"Bearer {pastor_token}"}
     branches_url = "/api/v1/admin/branches"
     payload = {"name": "Masaka Central", "location": "Masaka", "is_active": True}
+    default_branch_id = client.get("/api/v1/auth/me", headers=admin_headers).json()["branch_id"]
 
     assert client.get(branches_url).status_code == 401
-    assert client.get(branches_url, headers=pastor_headers).status_code == 403
+    assert client.get(branches_url, headers=pastor_headers).status_code == 200
+    assert client.post(branches_url, headers=pastor_headers, json=payload).status_code == 403
     created = client.post(branches_url, headers=admin_headers, json=payload)
     assert created.status_code == 201, created.text
     branch_id = created.json()["id"]
@@ -1261,17 +1307,18 @@ def test_branch_registry_is_admin_managed_audited_and_archivable(client: TestCli
 
     listed = client.get(branches_url, headers=admin_headers)
     assert listed.status_code == 200
-    assert [branch["id"] for branch in listed.json()] == [branch_id]
+    assert {branch["id"] for branch in listed.json()} == {branch_id, default_branch_id}
     assert client.put(
         f"{branches_url}/{branch_id}",
         headers=admin_headers,
         json={"name": "Masaka Central Campus", "location": "Central Masaka", "is_active": False},
     ).status_code == 200
-    assert client.get(branches_url, headers=admin_headers).json() == []
+    assert [branch["id"] for branch in client.get(branches_url, headers=admin_headers).json()] == [default_branch_id]
     archived = client.get(f"{branches_url}?include_inactive=true", headers=admin_headers)
     assert archived.status_code == 200
-    assert archived.json()[0]["name"] == "Masaka Central Campus"
-    assert archived.json()[0]["is_active"] is False
+    archived_branch = next(branch for branch in archived.json() if branch["id"] == branch_id)
+    assert archived_branch["name"] == "Masaka Central Campus"
+    assert archived_branch["is_active"] is False
     assert client.put(
         f"{branches_url}/{branch_id}",
         headers=admin_headers,
@@ -1385,3 +1432,292 @@ def test_pastoral_care_resource_bookings_documents_and_certificates(client: Test
         assert stored_certificate is not None
         assert "Baptized at the Sunday service" not in stored_certificate.encrypted_details
         assert db.scalar(select(func.count()).select_from(ResourceBooking)) == 1
+
+
+def test_branch_assignment_for_small_groups_and_resources(client: TestClient) -> None:
+    editor_token = provision_user(client, "branch-assignment-editor@example.org", role="editor")
+    editor_headers = {"Authorization": f"Bearer {editor_token}"}
+    branch_id = client.get("/api/v1/auth/me", headers=editor_headers).json()["branch_id"]
+
+    group = client.post("/api/v1/admin/groups", headers=editor_headers, json={
+        "name": "Branch fellowship",
+        "meeting_area": "Community hall",
+        "meeting_day": "Sunday",
+        "meeting_time": "4:00 PM",
+        "branch_id": branch_id,
+        "is_published": True,
+    })
+    assert group.status_code == 201, group.text
+    assert group.json()["branch_id"] == branch_id
+    assert [item["id"] for item in client.get(
+        f"/api/v1/admin/groups?branch_id={branch_id}", headers=editor_headers,
+    ).json()] == [group.json()["id"]]
+    public_groups = client.get(f"/api/v1/groups?branch_id={branch_id}")
+    assert [item["id"] for item in public_groups.json()] == [group.json()["id"]]
+
+    resource = client.post("/api/v1/admin/resources", headers=editor_headers, json={
+        "name": "Branch meeting room",
+        "description": "Community hall meeting room",
+        "branch_id": branch_id,
+    })
+    assert resource.status_code == 201, resource.text
+    assert resource.json()["branch_id"] == branch_id
+    filtered_resources = client.get(
+        f"/api/v1/admin/resources?branch_id={branch_id}", headers=editor_headers,
+    )
+    assert [item["id"] for item in filtered_resources.json()] == [resource.json()["id"]]
+
+    booking_day = (datetime.now(timezone.utc).date() + timedelta(days=5)).isoformat()
+    booking = client.post("/api/v1/admin/resource-bookings", headers=editor_headers, json={
+        "resource_id": resource.json()["id"],
+        "starts_at": f"{booking_day}T10:00:00Z",
+        "ends_at": f"{booking_day}T11:00:00Z",
+        "purpose": "Branch ministry meeting",
+    })
+    assert booking.status_code == 201, booking.text
+    assert booking.json()["branch_id"] == branch_id
+    branch_bookings = client.get(
+        f"/api/v1/admin/resource-bookings?branch_id={branch_id}", headers=editor_headers,
+    )
+    assert [item["id"] for item in branch_bookings.json()] == [booking.json()["id"]]
+
+
+def test_institutions_missions_register_is_role_limited_audited_and_branch_filterable(client: TestClient) -> None:
+    admin_token = provision_user(client, "institution-admin@example.org")
+    admin_headers = {"Authorization": f"Bearer {admin_token}"}
+    pastor_token = provision_user(client, "institution-pastor@example.org", role="pastor")
+    pastor_headers = {"Authorization": f"Bearer {pastor_token}"}
+    editor_token = provision_user(client, "institution-editor@example.org", role="editor")
+    editor_headers = {"Authorization": f"Bearer {editor_token}"}
+    url = "/api/v1/admin/institutions-missions"
+    assert client.get(url, headers=editor_headers).status_code == 403
+
+    branch_id = client.get("/api/v1/auth/me", headers=pastor_headers).json()["branch_id"]
+    payload = {
+        "record_type": "school",
+        "name": "Community Learning Centre",
+        "location": "Masaka",
+        "description": "Church-supported education programme.",
+        "is_active": True,
+        "branch_id": branch_id,
+    }
+    created = client.post(url, headers=pastor_headers, json=payload)
+    assert created.status_code == 201, created.text
+    assert created.json()["record_type"] == "school"
+    assert created.json()["branch_id"] == branch_id
+    filtered = client.get(f"{url}?record_type=school&branch_id={branch_id}", headers=admin_headers)
+    assert [record["id"] for record in filtered.json()] == [created.json()["id"]]
+
+    updated = client.put(
+        f"{url}/{created.json()['id']}",
+        headers=pastor_headers,
+        json={**payload, "is_active": False},
+    )
+    assert updated.status_code == 200, updated.text
+    assert client.get(url, headers=admin_headers).json() == []
+    inactive = client.get(f"{url}?include_inactive=true", headers=admin_headers)
+    assert inactive.status_code == 200
+    assert inactive.json()[0]["is_active"] is False
+    with Session(client.app.state.database_engine) as db:
+        audit_count = db.scalar(select(func.count()).select_from(AuditLog).where(
+            AuditLog.entity_type == "institution_mission_record",
+        ))
+        assert audit_count == 2
+
+
+def test_safeguarding_intake_is_encrypted_and_access_partitioned(client: TestClient) -> None:
+    url = "/api/v1/safeguarding/reports"
+    lead_token = provision_user(client, "safeguarding-lead@example.org", role="safeguarding_lead")
+    lead_headers = {"Authorization": f"Bearer {lead_token}"}
+    senior_token = provision_user(client, "safeguarding-senior@example.org", role="senior_pastor")
+    senior_headers = {"Authorization": f"Bearer {senior_token}"}
+    chair_token = provision_user(client, "safeguarding-chair@example.org", role="board_chair")
+    chair_headers = {"Authorization": f"Bearer {chair_token}"}
+    admin_token = provision_user(client, "safeguarding-admin@example.org")
+    admin_headers = {"Authorization": f"Bearer {admin_token}"}
+
+    base = {
+        "report_type": "incident",
+        "incident_date": "2026-10-25",
+        "incident_time": "14:30",
+        "location": "Church grounds",
+        "people_involved": "Volunteer and child",
+        "witness_names": "Witness One",
+        "factual_description": "A factual description of the incident was provided.",
+        "action_taken": "Separated the parties and informed the safeguarding lead.",
+        "reporter_name": "Concerned Parent",
+        "reporter_contact": "parent@example.org",
+        "privacy_acknowledged": True,
+    }
+    normal = client.post(url, json=base)
+    assert normal.status_code == 201, normal.text
+    restricted = client.post(url, json={**base, "involves_restricted_staff": True})
+    assert restricted.status_code == 201, restricted.text
+    serious = client.post(url, json={**base, "serious_child_protection": True})
+    assert serious.status_code == 201, serious.text
+    assert client.post(url, json={**base, "privacy_acknowledged": False}).status_code == 422
+
+    reports_url = "/api/v1/admin/safeguarding/reports"
+    assert client.get(reports_url).status_code == 401
+    assert client.get(reports_url, headers=admin_headers).status_code == 403
+    lead_reports = client.get(reports_url, headers=lead_headers)
+    assert {item["id"] for item in lead_reports.json()} == {normal.json()["id"], serious.json()["id"]}
+    senior_reports = client.get(reports_url, headers=senior_headers)
+    assert {item["id"] for item in senior_reports.json()} == {normal.json()["id"], serious.json()["id"]}
+    chair_reports = client.get(reports_url, headers=chair_headers)
+    assert [item["id"] for item in chair_reports.json()] == [restricted.json()["id"]]
+    assert normal.json()["retention_until"] >= "2051-01-01"
+
+    investigating = client.patch(
+        f"{reports_url}/{normal.json()['id']}/status",
+        headers=lead_headers,
+        json={"status": "investigating"},
+    )
+    assert investigating.status_code == 200
+    pending_resolution = client.patch(
+        f"{reports_url}/{normal.json()['id']}/status",
+        headers=lead_headers,
+        json={"status": "pending_resolution"},
+    )
+    assert pending_resolution.status_code == 200
+    senior_approval = client.patch(
+        f"{reports_url}/{normal.json()['id']}/status",
+        headers=senior_headers,
+        json={"status": "approve_resolution"},
+    )
+    assert senior_approval.status_code == 200
+    assert senior_approval.json()["status"] == "pending_resolution"
+    board_approval = client.patch(
+        f"{reports_url}/{normal.json()['id']}/status",
+        headers=chair_headers,
+        json={"status": "approve_resolution"},
+    )
+    assert board_approval.status_code == 200
+    assert board_approval.json()["status"] == "resolved"
+    assert board_approval.json()["senior_resolution_approval_by_id"] != board_approval.json()["trustee_resolution_approval_by_id"]
+
+    assert client.patch(
+        f"{reports_url}/{serious.json()['id']}/status",
+        headers=senior_headers,
+        json={"status": "referred_to_authorities"},
+    ).status_code == 403
+    assert client.patch(
+        f"{reports_url}/{serious.json()['id']}/status",
+        headers=lead_headers,
+        json={"status": "investigating"},
+    ).status_code == 422
+    referred = client.patch(
+        f"{reports_url}/{serious.json()['id']}/status",
+        headers=lead_headers,
+        json={"status": "referred_to_authorities"},
+    )
+    assert referred.status_code == 200, referred.text
+    assert referred.json()["external_referral_at"] is not None
+    assert client.patch(
+        f"{reports_url}/{restricted.json()['id']}/status",
+        headers=lead_headers,
+        json={"status": "investigating"},
+    ).status_code == 404
+
+    with Session(client.app.state.database_engine) as db:
+        report = db.get(SafeguardingReport, normal.json()["id"])
+        assert report is not None
+        assert "Concerned Parent" not in report.encrypted_payload
+        assert "A factual description" not in report.encrypted_payload
+
+
+def test_volunteer_vetting_is_encrypted_restricted_and_retained_after_service(client: TestClient) -> None:
+    admin_token = provision_user(client, "vetting-admin@example.org")
+    admin_headers = {"Authorization": f"Bearer {admin_token}"}
+    hr_token = provision_user(client, "vetting-hr@example.org", role="hr_admin")
+    hr_headers = {"Authorization": f"Bearer {hr_token}"}
+    lead_token = provision_user(client, "vetting-lead@example.org", role="safeguarding_lead")
+    lead_headers = {"Authorization": f"Bearer {lead_token}"}
+    senior_token = provision_user(client, "vetting-senior@example.org", role="senior_pastor")
+    senior_headers = {"Authorization": f"Bearer {senior_token}"}
+    editor_token = provision_user(client, "vetting-editor@example.org", role="editor")
+    editor_headers = {"Authorization": f"Bearer {editor_token}"}
+
+    member = client.post("/api/v1/admin/members", headers=admin_headers, json={
+        "name": "Vetting Volunteer", "consent_confirmed": True,
+    })
+    assert member.status_code == 201, member.text
+    url = "/api/v1/admin/safeguarding/vetting"
+    payload = {
+        "member_id": member.json()["id"],
+        "government_id": "UG-ID-PRIVATE-123",
+        "reference_names": "Reference One; Reference Two",
+        "reference_contacts": "ref1@example.org; ref2@example.org",
+        "background_check_consent": True,
+        "service_started_at": "2026-10-01",
+    }
+    assert client.post(url, headers=hr_headers, json={**payload, "background_check_consent": False}).status_code == 422
+    created = client.post(url, headers=hr_headers, json=payload)
+    assert created.status_code == 201, created.text
+    record_id = created.json()["id"]
+    with Session(client.app.state.database_engine) as db:
+        record = db.get(VolunteerVettingRecord, record_id)
+        assert record is not None
+        assert "UG-ID-PRIVATE-123" not in record.encrypted_details
+        assert "ref1@example.org" not in record.encrypted_details
+
+    assert client.get(url, headers=editor_headers).status_code == 403
+    assert client.patch(f"{url}/{record_id}/status", headers=admin_headers, json={"status": "approved"}).status_code == 403
+    assert client.patch(f"{url}/{record_id}/status", headers=lead_headers, json={"status": "approved"}).status_code == 422
+
+    reviewed = client.patch(f"{url}/{record_id}/review", headers=lead_headers, json={
+        "background_check_status": "clear",
+        "references_checked": True,
+        "training_completed_at": "2026-10-20",
+    })
+    assert reviewed.status_code == 200, reviewed.text
+    approved = client.patch(f"{url}/{record_id}/status", headers=lead_headers, json={"status": "approved"})
+    assert approved.status_code == 200, approved.text
+    assert approved.json()["status"] == "approved"
+
+    ended = client.patch(f"{url}/{record_id}/status", headers=lead_headers, json={
+        "status": "service_ended", "service_ended_at": "2026-10-31",
+    })
+    assert ended.status_code == 200, ended.text
+    assert ended.json()["retention_until"] == "2033-10-31"
+    assert client.delete(f"{url}/{record_id}", headers=lead_headers).status_code == 404
+    assert client.get(url, headers=senior_headers).status_code == 200
+
+
+def test_branch_scoped_staff_cannot_read_or_write_other_branch_members(client: TestClient) -> None:
+    admin_token = provision_user(client, "branch-scope-admin@example.org")
+    admin_headers = {"Authorization": f"Bearer {admin_token}"}
+    editor_token = provision_user(client, "branch-scope-pastor@example.org", role="pastor")
+    editor_headers = {"Authorization": f"Bearer {editor_token}"}
+    editor_branch_id = client.get("/api/v1/auth/me", headers=editor_headers).json()["branch_id"]
+    other_branch = client.post("/api/v1/admin/branches", headers=admin_headers, json={
+        "name": "Other Branch", "location": "Nearby", "is_active": True,
+    })
+    assert other_branch.status_code == 201, other_branch.text
+    other_branch_id = other_branch.json()["id"]
+    assert other_branch_id != editor_branch_id
+
+    local_member = client.post("/api/v1/admin/members", headers=editor_headers, json={
+        "name": "Local Member", "consent_confirmed": True,
+    })
+    other_member = client.post("/api/v1/admin/members", headers=admin_headers, json={
+        "name": "Other Member", "branch_id": other_branch_id, "consent_confirmed": True,
+    })
+    assert local_member.status_code == 201, local_member.text
+    assert other_member.status_code == 201, other_member.text
+    assert local_member.json()["branch_id"] == editor_branch_id
+    assert other_member.json()["branch_id"] == other_branch_id
+
+    local_list = client.get("/api/v1/admin/members", headers=editor_headers)
+    assert [member["id"] for member in local_list.json()] == [local_member.json()["id"]]
+    assert client.get(f"/api/v1/admin/members/{other_member.json()['id']}", headers=editor_headers).status_code == 404
+    assert client.put(
+        f"/api/v1/admin/members/{other_member.json()['id']}",
+        headers=editor_headers,
+        json={"name": "Attempted cross-branch update", "branch_id": other_branch_id},
+    ).status_code == 404
+    assert client.post("/api/v1/admin/members", headers=editor_headers, json={
+        "name": "Cross-branch assignment", "branch_id": other_branch_id, "consent_confirmed": True,
+    }).status_code == 403
+    global_list = client.get("/api/v1/admin/members", headers=admin_headers)
+    assert {member["id"] for member in global_list.json()} == {local_member.json()["id"], other_member.json()["id"]}

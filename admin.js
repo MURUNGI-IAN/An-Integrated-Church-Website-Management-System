@@ -1,5 +1,6 @@
 const loginPanel = document.querySelector('#login-panel');
 const consolePanel = document.querySelector('#console-panel');
+const consoleTabList = document.querySelector('.console-tabs');
 const loginForm = document.querySelector('#login-form');
 const loginStatus = document.querySelector('#login-status');
 let currentStaffRole = null;
@@ -110,6 +111,122 @@ function showEmpty(list, message) {
   list.replaceChildren(empty);
 }
 
+function attachAdminListTools(list) {
+  const tools = document.createElement('div');
+  tools.className = 'admin-list-tools';
+  tools.hidden = true;
+
+  const searchLabel = document.createElement('label');
+  searchLabel.className = 'admin-list-search';
+  searchLabel.textContent = 'Search this list';
+  const search = document.createElement('input');
+  search.type = 'search';
+  search.setAttribute('aria-label', `Search ${list.id.replaceAll('-', ' ')}`);
+  searchLabel.append(search);
+
+  const showMore = document.createElement('button');
+  showMore.type = 'button';
+  showMore.className = 'admin-list-more';
+  showMore.textContent = 'Show more';
+  tools.append(searchLabel, showMore);
+  list.before(tools);
+
+  let visibleLimit = 25;
+  const refresh = () => {
+    const rows = Array.from(list.children).filter((row) => row.classList.contains('admin-list-item'));
+    const query = search.value.trim().toLocaleLowerCase();
+    const matches = rows.filter((row) => row.textContent.toLocaleLowerCase().includes(query));
+    const visibleRows = new Set(matches.slice(0, visibleLimit));
+
+    rows.forEach((row) => { row.hidden = !visibleRows.has(row); });
+    tools.hidden = rows.length <= 5;
+    showMore.hidden = matches.length <= visibleLimit;
+  };
+
+  search.addEventListener('input', () => {
+    visibleLimit = 25;
+    refresh();
+  });
+  showMore.addEventListener('click', () => {
+    visibleLimit += 25;
+    refresh();
+  });
+  new MutationObserver(refresh).observe(list, { childList: true });
+  refresh();
+}
+
+document.querySelectorAll('.admin-list').forEach(attachAdminListTools);
+document.querySelectorAll('form').forEach((form) => {
+  const hiddenId = form.querySelector('input[type="hidden"][name="id"]');
+  if (!hiddenId) return;
+  form.addEventListener('reset', () => {
+    hiddenId.value = '';
+    hiddenId.defaultValue = '';
+  });
+});
+
+const consoleQuickGuides = {
+  pages: 'Edit and publish church information pages.',
+  sermons: 'Add recordings and notes, then publish messages for visitors.',
+  events: 'Publish events and review registrations.',
+  alerts: 'Publish urgent notices and set an expiry when appropriate.',
+  members: 'Find member records and update contact or consent details.',
+  attendance: 'Record service check-ins and check members out.',
+  rota: 'Collect availability, generate a rota, and review assignments.',
+  groups: 'Maintain public group listings and follow up on waitlists.',
+  children: 'Manage consented child records and authorized pickup members.',
+  contact: 'Review enquiries and update their follow-up status.',
+  visitors: 'Review visit requests and record follow-up progress.',
+  prayer: 'Handle prayer requests confidentially and update their status.',
+  finance: 'Record transactions and independently review pending items.',
+  'care-tasks': 'Assign confidential follow-ups and mark completed tasks.',
+  resources: 'Maintain resources and review booking requests.',
+  documents: 'Store restricted documents and issue member certificates.',
+  governance: 'Record meetings and resolutions; keep pastoral details private.',
+  analytics: 'Filter aggregate ministry totals by date and branch.',
+  branches: 'Maintain branches and assign records only after approval.',
+  audit: 'Review recent staff activity for accountability.',
+};
+
+Object.entries(consoleQuickGuides).forEach(([name, guide]) => {
+  const panel = document.querySelector(`#panel-${name}`);
+  const heading = panel?.querySelector('.console-panel-heading');
+  if (!heading) return;
+  const guideLine = document.createElement('p');
+  guideLine.className = 'console-quick-guide';
+  guideLine.textContent = `Quick guide: ${guide}`;
+  heading.append(guideLine);
+});
+
+consoleTabList.setAttribute('role', 'tablist');
+consoleTabList.querySelectorAll('[data-tab]').forEach((button) => {
+  const panel = document.getElementById(`panel-${button.dataset.tab}`);
+  button.id = `console-tab-${button.dataset.tab}`;
+  button.setAttribute('role', 'tab');
+  button.setAttribute('aria-controls', panel.id);
+  button.tabIndex = -1;
+  panel.setAttribute('role', 'tabpanel');
+  panel.tabIndex = 0;
+});
+
+consoleTabList.addEventListener('keydown', (event) => {
+  const visibleTabs = Array.from(consoleTabList.querySelectorAll('[role="tab"]')).filter((button) => !button.hidden);
+  const currentIndex = visibleTabs.indexOf(document.activeElement);
+  if (currentIndex < 0) return;
+
+  let nextIndex;
+  if (event.key === 'ArrowRight') nextIndex = (currentIndex + 1) % visibleTabs.length;
+  else if (event.key === 'ArrowLeft') nextIndex = (currentIndex - 1 + visibleTabs.length) % visibleTabs.length;
+  else if (event.key === 'Home') nextIndex = 0;
+  else if (event.key === 'End') nextIndex = visibleTabs.length - 1;
+  else return;
+
+  event.preventDefault();
+  const nextTab = visibleTabs[nextIndex];
+  nextTab.focus();
+  activateTab(nextTab.dataset.tab);
+});
+
 function toLocalDateTime(isoDate) {
   const localDate = new Date(new Date(isoDate).getTime() - new Date(isoDate).getTimezoneOffset() * 60000);
   return localDate.toISOString().slice(0, 16);
@@ -119,7 +236,7 @@ async function loadMembers() {
   const list = document.querySelector('#members-list');
   const status = document.querySelector('#member-status-filter').value;
   try {
-    const members = await apiRequest(`/admin/members?status=${encodeURIComponent(status)}`);
+    const members = await apiRequest(`/admin/members?status=${encodeURIComponent(status)}&limit=500`);
     list.replaceChildren();
     if (!members.length) return showEmpty(list, `No ${status === 'all' ? '' : `${status} `}members found.`);
     members.forEach((member) => {
@@ -145,6 +262,11 @@ async function loadMembers() {
               document.querySelector(`#member-${channel}-consent`).checked = preference.is_consented;
               document.querySelector(`#member-${channel}-consent-source`).value = preference.consent_source;
             });
+            if (preferences.length) {
+              document.querySelector('#member-communication-frequency').value = preferences[0].delivery_frequency;
+              document.querySelector('#member-quiet-hours-start').value = preferences[0].quiet_hours_start;
+              document.querySelector('#member-quiet-hours-end').value = preferences[0].quiet_hours_end;
+            }
           } catch (error) {
             setFormStatus(form, error.message, true);
           }
@@ -271,19 +393,21 @@ async function showGroupWaitlist(group) {
 async function loadGroups() {
   const list = document.querySelector('#groups-list');
   try {
-    const groups = await apiRequest('/admin/groups');
+    const branchId = document.querySelector('#group-branch-filter').value;
+    const groups = await apiRequest(branchId ? `/admin/groups?branch_id=${encodeURIComponent(branchId)}` : '/admin/groups');
     list.replaceChildren();
     if (!groups.length) return showEmpty(list, 'No small groups have been added.');
     groups.forEach((group) => {
       const row = addAdminRow(
         list,
         group.name,
-        `${group.meeting_area} · ${group.meeting_day} · ${group.age_group} · ${group.is_open ? 'Open' : 'Waitlist'} · ${group.is_published ? 'Published' : 'Draft'}`,
+        `${group.meeting_area} · ${branchName(group.branch_id)} · ${group.meeting_day} · ${group.age_group} · ${group.is_open ? 'Open' : 'Waitlist'} · ${group.is_published ? 'Published' : 'Draft'}`,
         'Edit',
         () => {
           const form = document.querySelector('#group-form');
           form.elements.id.value = group.id;
           form.elements.name.value = group.name;
+          setBranchSelectValue(form.elements.branch_id, group.branch_id);
           form.elements.description.value = group.description;
           form.elements.meeting_area.value = group.meeting_area;
           form.elements.meeting_day.value = group.meeting_day;
@@ -915,6 +1039,20 @@ async function loadFinance() {
           }
         },
       );
+      if (canReview) {
+        const reject = document.createElement('button');
+        reject.type = 'button';
+        reject.textContent = 'Reject';
+        reject.addEventListener('click', async () => {
+          try {
+            await apiRequest(`/admin/finance/entries/${entry.id}/approval?status=rejected`, { method: 'PATCH' });
+            await loadFinance();
+          } catch (error) {
+            setFormStatus(document.querySelector('#finance-entry-form'), error.message, true);
+          }
+        });
+        row.append(reject);
+      }
       if (!entry.correction_of_id && (entry.status === 'recorded' || (entry.entry_type === 'expense' && entry.status === 'approved'))) {
         const correct = document.createElement('button');
         correct.type = 'button';
@@ -1128,9 +1266,12 @@ async function loadResourceBookings() {
   const resourcesList = document.querySelector('#resources-list');
   const bookingsList = document.querySelector('#resource-bookings-list');
   try {
+    const branchId = document.querySelector('#resource-branch-filter').value;
+    const resourceParams = new URLSearchParams({ include_inactive: 'true' });
+    if (branchId) resourceParams.set('branch_id', branchId);
     const [resources, bookings] = await Promise.all([
-      apiRequest('/admin/resources?include_inactive=true'),
-      apiRequest('/admin/resource-bookings'),
+      apiRequest(`/admin/resources?${resourceParams}`),
+      apiRequest(branchId ? `/admin/resource-bookings?branch_id=${encodeURIComponent(branchId)}` : '/admin/resource-bookings'),
     ]);
     const resourceSelect = document.querySelector('#booking-resource');
     const activeResources = resources.filter((resource) => resource.is_active);
@@ -1148,7 +1289,22 @@ async function loadResourceBookings() {
     resourcesList.replaceChildren();
     if (!activeResources.length) showEmpty(resourcesList, 'No active resources have been added.');
     resources.forEach((resource) => {
-      const row = addAdminRow(resourcesList, resource.name, `${resource.description || 'No description'} · ${resource.is_active ? 'Active' : 'Inactive'}`);
+      const row = addAdminRow(resourcesList, resource.name, `${resource.description || 'No description'} · ${branchName(resource.branch_id)} · ${resource.is_active ? 'Active' : 'Inactive'}`);
+      const edit = document.createElement('button');
+      edit.type = 'button';
+      edit.textContent = 'Edit';
+      edit.addEventListener('click', () => {
+        const form = document.querySelector('#resource-form');
+        form.elements.id.value = resource.id;
+        form.elements.name.value = resource.name;
+        form.elements.description.value = resource.description || '';
+        setBranchSelectValue(form.elements.branch_id, resource.branch_id);
+        form.elements.is_active.checked = resource.is_active;
+        form.querySelector('h3').textContent = 'Edit resource';
+        form.querySelector('button[type="submit"]').textContent = 'Update resource';
+        form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+      row.append(edit);
       const toggle = document.createElement('button');
       toggle.type = 'button';
       toggle.textContent = resource.is_active ? 'Deactivate' : 'Reactivate';
@@ -1171,7 +1327,7 @@ async function loadResourceBookings() {
       const row = addAdminRow(
         bookingsList,
         `${booking.resource_name} · ${booking.status}`,
-        `${new Date(booking.starts_at).toLocaleString('en-UG')} – ${new Date(booking.ends_at).toLocaleString('en-UG')} · ${booking.purpose}`,
+        `${new Date(booking.starts_at).toLocaleString('en-UG')} – ${new Date(booking.ends_at).toLocaleString('en-UG')} · ${branchName(booking.branch_id)} · ${booking.purpose}`,
       );
       if (booking.status === 'pending') {
         ['approved', 'rejected'].forEach((nextStatus) => {
@@ -1375,6 +1531,23 @@ async function loadGovernance() {
         `${meeting.title} · ${meeting.status}`,
         `${meeting.meeting_date} · ${branchName(meeting.branch_id)}${meeting.location ? ` · ${meeting.location}` : ''}${meeting.minutes ? ` · ${meeting.minutes}` : ''}`,
       );
+      const edit = document.createElement('button');
+      edit.type = 'button';
+      edit.textContent = 'Edit';
+      edit.addEventListener('click', () => {
+        const form = document.querySelector('#governance-meeting-form');
+        form.elements.id.value = meeting.id;
+        form.elements.title.value = meeting.title;
+        form.elements.meeting_date.value = meeting.meeting_date;
+        form.elements.location.value = meeting.location || '';
+        setBranchSelectValue(form.elements.branch_id, meeting.branch_id);
+        form.elements.status.value = meeting.status;
+        form.elements.minutes.value = meeting.minutes || '';
+        form.querySelector('h3').textContent = 'Edit meeting';
+        form.querySelector('button[type="submit"]').textContent = 'Update meeting';
+        form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+      row.append(edit);
       const view = document.createElement('button');
       view.type = 'button';
       view.textContent = 'View resolutions';
@@ -1464,16 +1637,278 @@ async function loadBranches() {
   }
 }
 
-const loaders = { members: loadMembers, attendance: loadAttendancePanel, rota: loadRotaPanel, groups: loadGroups, children: loadChildPanel, alerts: loadAlerts, pages: loadPages, sermons: loadSermons, events: loadEvents, contact: loadContactInquiries, visitors: loadVisitorVisits, prayer: loadPrayerRequests, finance: loadFinance, 'care-tasks': loadPastoralCareTasks, resources: loadResourceBookings, documents: loadDocumentsAndCertificates, governance: loadGovernance, analytics: loadAnalytics, branches: loadBranches, audit: loadAudit };
+async function loadInstitutionsMissions() {
+  const list = document.querySelector('#institutions-list');
+  try {
+    const records = await apiRequest('/admin/institutions-missions?include_inactive=true');
+    list.replaceChildren();
+    if (!records.length) return showEmpty(list, 'No institution or mission records have been added.');
+    records.forEach((record) => {
+      const row = addAdminRow(
+        list,
+        `${record.name} · ${record.record_type.replaceAll('_', ' ')}`,
+        `${record.location || 'No location provided'} · ${branchName(record.branch_id)} · ${record.is_active ? 'Active' : 'Inactive'}${record.description ? ` · ${record.description}` : ''}`,
+        'Edit',
+        () => {
+          const form = document.querySelector('#institutions-form');
+          form.elements.id.value = record.id;
+          form.elements.record_type.value = record.record_type;
+          form.elements.name.value = record.name;
+          form.elements.location.value = record.location;
+          form.elements.description.value = record.description;
+          setBranchSelectValue(form.elements.branch_id, record.branch_id);
+          form.elements.is_active.checked = record.is_active;
+          form.querySelector('button[type="submit"]').textContent = 'Update record';
+          form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        },
+      );
+      const toggle = document.createElement('button');
+      toggle.type = 'button';
+      toggle.textContent = record.is_active ? 'Deactivate' : 'Reactivate';
+      toggle.addEventListener('click', async () => {
+        try {
+          await apiRequest(`/admin/institutions-missions/${record.id}`, {
+            method: 'PUT',
+            body: JSON.stringify({
+              record_type: record.record_type,
+              name: record.name,
+              location: record.location,
+              description: record.description,
+              is_active: !record.is_active,
+              branch_id: record.branch_id,
+            }),
+          });
+          await loadInstitutionsMissions();
+        } catch (error) {
+          toggle.textContent = error.message;
+        }
+      });
+      row.append(toggle);
+    });
+  } catch (error) {
+    showEmpty(list, error.message);
+  }
+}
+
+async function loadSafeguardingReports() {
+  const list = document.querySelector('#safeguarding-reports-list');
+  try {
+    const reports = await apiRequest('/admin/safeguarding/reports');
+    list.replaceChildren();
+    if (!reports.length) return showEmpty(list, 'No safeguarding reports are assigned to your review role.');
+    reports.forEach((report) => {
+      const row = addAdminRow(
+        list,
+        `Report #${report.id} · ${report.report_type} · ${report.status.replaceAll('_', ' ')}`,
+        `${report.incident_date} ${report.incident_time} · ${report.location} · Retain until ${report.retention_until}${report.serious_child_protection ? ' · Serious child-protection referral' : ''}`,
+      );
+      const details = document.createElement('details');
+      const summary = document.createElement('summary');
+      summary.textContent = 'View confidential report details';
+      details.append(summary);
+      [
+        ['People involved', report.people_involved],
+        ['Witnesses', report.witness_names],
+        ['Factual description', report.factual_description],
+        ['Action taken', report.action_taken],
+        ['Reporter', `${report.reporter_name} · ${report.reporter_contact}`],
+      ].forEach(([label, value]) => {
+        if (!value) return;
+        const paragraph = document.createElement('p');
+        paragraph.textContent = `${label}: ${value}`;
+        details.append(paragraph);
+      });
+      row.append(details);
+
+      let nextStatus = null;
+      let actionLabel = null;
+      if (report.serious_child_protection && report.status === 'referral_required' && currentStaffRole === 'safeguarding_lead') {
+        nextStatus = 'referred_to_authorities';
+        actionLabel = 'Record external referral';
+      } else if (['new', 'investigating'].includes(report.status)
+        && ['safeguarding_lead', 'board_chair', 'trustee'].includes(currentStaffRole)) {
+        nextStatus = report.status === 'new' ? 'investigating' : 'pending_resolution';
+        actionLabel = report.status === 'new' ? 'Start investigation' : 'Request resolution';
+      } else if (report.status === 'pending_resolution'
+        && ['senior_pastor', 'board_chair', 'trustee'].includes(currentStaffRole)) {
+        nextStatus = 'approve_resolution';
+        actionLabel = 'Approve resolution';
+      }
+
+      if (actionLabel) {
+        const action = document.createElement('button');
+        action.type = 'button';
+        action.textContent = actionLabel;
+        action.addEventListener('click', async () => {
+          if (nextStatus === 'referred_to_authorities'
+            && !window.confirm('Confirm the external authority referral has already been made.')) return;
+          action.disabled = true;
+          try {
+            await apiRequest(`/admin/safeguarding/reports/${report.id}/status`, {
+              method: 'PATCH',
+              body: JSON.stringify({ status: nextStatus }),
+            });
+            await loadSafeguardingReports();
+          } catch (error) {
+            action.textContent = error.message;
+            action.disabled = false;
+          }
+        });
+        row.append(action);
+      }
+      if (report.status === 'pending_resolution'
+        && ['senior_pastor', 'board_chair', 'trustee'].includes(currentStaffRole)) {
+        const reject = document.createElement('button');
+        reject.type = 'button';
+        reject.textContent = 'Reject closure';
+        reject.addEventListener('click', async () => {
+          try {
+            await apiRequest(`/admin/safeguarding/reports/${report.id}/status`, {
+              method: 'PATCH',
+              body: JSON.stringify({ status: 'reject_resolution' }),
+            });
+            await loadSafeguardingReports();
+          } catch (error) {
+            reject.textContent = error.message;
+          }
+        });
+        row.append(reject);
+      }
+    });
+  } catch (error) {
+    showEmpty(list, error.message);
+  }
+}
+
+async function loadVolunteerVetting() {
+  const list = document.querySelector('#volunteer-vetting-list');
+  const form = document.querySelector('#volunteer-vetting-form');
+  const canCreate = ['admin', 'hr_admin', 'safeguarding_lead'].includes(currentStaffRole);
+  form.hidden = !canCreate;
+  try {
+    if (canCreate) {
+      const members = await apiRequest('/admin/safeguarding/vetting/members');
+      fillMemberSelect(document.querySelector('#vetting-member'), members, 'Choose a volunteer');
+    }
+    const records = await apiRequest('/admin/safeguarding/vetting');
+    list.replaceChildren();
+    if (!records.length) return showEmpty(list, 'No volunteer vetting records are available.');
+    records.forEach((record) => {
+      const row = addAdminRow(
+        list,
+        `${record.member_name} · ${record.status}`,
+        `Background check: ${record.background_check_status} · References: ${record.references_checked ? 'checked' : 'not checked'} · Training: ${record.training_completed_at || 'not completed'} · Retain until ${record.retention_until || 'service end + 7 years'}`,
+      );
+      const details = document.createElement('details');
+      const summary = document.createElement('summary');
+      summary.textContent = 'View restricted vetting details';
+      [
+        ['Government ID', record.government_id],
+        ['References', record.reference_names],
+        ['Reference contacts', record.reference_contacts],
+        ['Background-check consent', record.background_check_consent ? 'Recorded' : 'Not recorded'],
+      ].forEach(([label, value]) => {
+        const paragraph = document.createElement('p');
+        paragraph.textContent = `${label}: ${value}`;
+        details.append(paragraph);
+      });
+      details.prepend(summary);
+      row.append(details);
+
+      if (currentStaffRole !== 'safeguarding_lead') return;
+      if (record.status === 'pending') {
+        const controls = document.createElement('div');
+        controls.className = 'prayer-followup';
+        const backgroundStatus = document.createElement('select');
+        backgroundStatus.setAttribute('aria-label', `Background check status for ${record.member_name}`);
+        [['pending', 'Pending'], ['clear', 'Clear'], ['flagged', 'Flagged']].forEach(([value, label]) => {
+          backgroundStatus.add(new Option(label, value));
+        });
+        backgroundStatus.value = record.background_check_status;
+        const referencesChecked = document.createElement('input');
+        referencesChecked.type = 'checkbox';
+        referencesChecked.checked = record.references_checked;
+        referencesChecked.setAttribute('aria-label', `References checked for ${record.member_name}`);
+        const trainingDate = document.createElement('input');
+        trainingDate.type = 'date';
+        trainingDate.value = record.training_completed_at || '';
+        trainingDate.setAttribute('aria-label', `Training completion date for ${record.member_name}`);
+        const saveReview = document.createElement('button');
+        saveReview.type = 'button';
+        saveReview.textContent = 'Save checks';
+        saveReview.addEventListener('click', async () => {
+          try {
+            await apiRequest(`/admin/safeguarding/vetting/${record.id}/review`, {
+              method: 'PATCH',
+              body: JSON.stringify({
+                background_check_status: backgroundStatus.value,
+                references_checked: referencesChecked.checked,
+                training_completed_at: trainingDate.value || null,
+              }),
+            });
+            await loadVolunteerVetting();
+          } catch (error) {
+            saveReview.textContent = error.message;
+          }
+        });
+        controls.append(backgroundStatus, referencesChecked, trainingDate, saveReview);
+        row.append(controls);
+
+        [['approved', 'Approve'], ['rejected', 'Reject']].forEach(([status, label]) => {
+          const action = document.createElement('button');
+          action.type = 'button';
+          action.textContent = label;
+          action.addEventListener('click', async () => {
+            try {
+              await apiRequest(`/admin/safeguarding/vetting/${record.id}/status`, {
+                method: 'PATCH',
+                body: JSON.stringify({ status }),
+              });
+              await loadVolunteerVetting();
+            } catch (error) {
+              action.textContent = error.message;
+            }
+          });
+          row.append(action);
+        });
+      } else if (record.status === 'approved') {
+        const endedDate = document.createElement('input');
+        endedDate.type = 'date';
+        endedDate.setAttribute('aria-label', `Service end date for ${record.member_name}`);
+        const endService = document.createElement('button');
+        endService.type = 'button';
+        endService.textContent = 'End service';
+        endService.addEventListener('click', async () => {
+          try {
+            await apiRequest(`/admin/safeguarding/vetting/${record.id}/status`, {
+              method: 'PATCH',
+              body: JSON.stringify({ status: 'service_ended', service_ended_at: endedDate.value }),
+            });
+            await loadVolunteerVetting();
+          } catch (error) {
+            endService.textContent = error.message;
+          }
+        });
+        row.append(endedDate, endService);
+      }
+    });
+  } catch (error) {
+    showEmpty(list, error.message);
+  }
+}
+
+const loaders = { members: loadMembers, attendance: loadAttendancePanel, rota: loadRotaPanel, groups: loadGroups, children: loadChildPanel, safeguarding: loadSafeguardingReports, vetting: loadVolunteerVetting, alerts: loadAlerts, pages: loadPages, sermons: loadSermons, events: loadEvents, contact: loadContactInquiries, visitors: loadVisitorVisits, prayer: loadPrayerRequests, finance: loadFinance, 'care-tasks': loadPastoralCareTasks, resources: loadResourceBookings, documents: loadDocumentsAndCertificates, governance: loadGovernance, analytics: loadAnalytics, branches: loadBranches, institutions: loadInstitutionsMissions, audit: loadAudit };
 
 async function activateTab(name) {
   document.querySelectorAll('[data-tab]').forEach((button) => {
-    button.setAttribute('aria-selected', String(button.dataset.tab === name));
+    const isSelected = button.dataset.tab === name;
+    button.setAttribute('aria-selected', String(isSelected));
+    button.tabIndex = isSelected ? 0 : -1;
   });
   document.querySelectorAll('[data-panel]').forEach((panel) => {
     panel.hidden = panel.dataset.panel !== name;
   });
-  if (['members', 'attendance', 'events', 'finance', 'governance', 'analytics'].includes(name)) {
+  if (['members', 'attendance', 'events', 'finance', 'governance', 'analytics', 'groups', 'resources', 'institutions'].includes(name)) {
     await loadBranchSelectors();
   }
   loaders[name]?.();
@@ -1491,6 +1926,8 @@ function showConsole(user) {
     rota: ['admin', 'editor', 'pastor'].includes(user.role),
     groups: ['admin', 'editor', 'pastor'].includes(user.role),
     children: ['admin', 'pastor'].includes(user.role),
+    safeguarding: ['safeguarding_lead', 'senior_pastor', 'board_chair', 'trustee'].includes(user.role),
+    vetting: ['admin', 'hr_admin', 'safeguarding_lead', 'senior_pastor'].includes(user.role),
     alerts: ['admin', 'editor', 'pastor'].includes(user.role),
     pages: ['admin', 'editor'].includes(user.role),
     sermons: ['admin', 'editor'].includes(user.role),
@@ -1505,6 +1942,7 @@ function showConsole(user) {
     governance: ['admin', 'pastor'].includes(user.role),
     analytics: ['admin', 'pastor'].includes(user.role),
     branches: user.role === 'admin',
+    institutions: ['admin', 'pastor'].includes(user.role),
     audit: user.role === 'admin',
   };
   document.querySelectorAll('[data-tab]').forEach((button) => {
@@ -1518,6 +1956,37 @@ function showConsole(user) {
 
 document.querySelectorAll('[data-tab]').forEach((button) => {
   button.addEventListener('click', () => activateTab(button.dataset.tab));
+});
+
+document.querySelector('#group-branch-filter').addEventListener('change', loadGroups);
+document.querySelector('#resource-branch-filter').addEventListener('change', loadResourceBookings);
+
+const volunteerVettingForm = document.querySelector('#volunteer-vetting-form');
+volunteerVettingForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const values = new FormData(volunteerVettingForm);
+  const button = volunteerVettingForm.querySelector('button[type="submit"]');
+  button.disabled = true;
+  try {
+    await apiRequest('/admin/safeguarding/vetting', {
+      method: 'POST',
+      body: JSON.stringify({
+        member_id: Number(values.get('member_id')),
+        government_id: values.get('government_id'),
+        reference_names: values.get('reference_names'),
+        reference_contacts: values.get('reference_contacts'),
+        background_check_consent: values.get('background_check_consent') === 'on',
+        service_started_at: values.get('service_started_at') || null,
+      }),
+    });
+    volunteerVettingForm.reset();
+    setFormStatus(volunteerVettingForm, 'Pending vetting record saved.');
+    await loadVolunteerVetting();
+  } catch (error) {
+    setFormStatus(volunteerVettingForm, error.message, true);
+  } finally {
+    button.disabled = false;
+  }
 });
 
 loginForm.addEventListener('submit', async (event) => {
@@ -1571,10 +2040,14 @@ memberForm.addEventListener('submit', async (event) => {
       await apiRequest(`/admin/members/${savedMember.id}/communication-consents`, {
         method: 'PUT',
         body: JSON.stringify({
-          preferences: ['email', 'sms'].map((channel) => ({
+          preferences: ['email', 'sms', 'whatsapp'].map((channel) => ({
             channel,
             is_consented: document.querySelector(`#member-${channel}-consent`).checked,
             consent_source: document.querySelector(`#member-${channel}-consent-source`).value,
+            delivery_frequency: document.querySelector('#member-communication-frequency').value,
+            quiet_hours_start: document.querySelector('#member-quiet-hours-start').value || '21:00',
+            quiet_hours_end: document.querySelector('#member-quiet-hours-end').value || '07:00',
+            timezone: 'Africa/Kampala',
           })),
         }),
       });
@@ -1838,6 +2311,7 @@ connectContentForm('#alert-form', '/admin/alerts', (values) => ({
 
 connectContentForm('#group-form', '/admin/groups', (values) => ({
   name: values.get('name'),
+  branch_id: optionalBranchId(values),
   description: values.get('description') || '',
   meeting_area: values.get('meeting_area'),
   meeting_day: values.get('meeting_day'),
@@ -1851,25 +2325,31 @@ connectContentForm('#group-form', '/admin/groups', (values) => ({
 
 function connectPhase3JsonForm(formId, endpoint, makePayload, refresh) {
   const form = document.querySelector(formId);
+  const submit = form.querySelector('button[type="submit"]');
+  const defaultSubmitText = submit.textContent;
   form.addEventListener('reset', () => {
     form.querySelector('.form-status').textContent = '';
+    submit.textContent = defaultSubmitText;
+    const heading = form.querySelector('h3');
+    if (form.id === 'resource-form') heading.textContent = 'Add resource';
+    if (form.id === 'governance-meeting-form') heading.textContent = 'Record a meeting';
   });
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
-    const button = form.querySelector('button[type="submit"]');
-    button.disabled = true;
+    const values = new FormData(form);
+    const recordId = values.get('id');
+    const method = recordId ? 'PUT' : 'POST';
+    const path = recordId ? `${endpoint}/${recordId}` : endpoint;
+    submit.disabled = true;
     try {
-      await apiRequest(endpoint, {
-        method: 'POST',
-        body: JSON.stringify(makePayload(new FormData(form))),
-      });
+      await apiRequest(path, { method, body: JSON.stringify(makePayload(values)) });
       form.reset();
       setFormStatus(form, 'Saved.');
       await refresh();
     } catch (error) {
       setFormStatus(form, error.message, true);
     } finally {
-      button.disabled = false;
+      submit.disabled = false;
     }
   });
 }
@@ -2047,8 +2527,18 @@ connectPhase3JsonForm('#care-task-form', '/admin/pastoral-care/tasks', (values) 
 connectPhase3JsonForm('#resource-form', '/admin/resources', (values) => ({
   name: values.get('name'),
   description: values.get('description') || '',
-  is_active: true,
+  is_active: values.get('is_active') === 'on',
+  branch_id: optionalBranchId(values),
 }), loadResourceBookings);
+
+connectPhase3JsonForm('#institutions-form', '/admin/institutions-missions', (values) => ({
+  record_type: values.get('record_type'),
+  name: values.get('name'),
+  location: values.get('location') || '',
+  description: values.get('description') || '',
+  is_active: values.get('is_active') === 'on',
+  branch_id: optionalBranchId(values),
+}), loadInstitutionsMissions);
 
 connectPhase3JsonForm('#resource-booking-form', '/admin/resource-bookings', (values) => ({
   resource_id: Number(values.get('resource_id')),
@@ -2068,6 +2558,10 @@ documentForm.addEventListener('submit', async (event) => {
   const file = values.get('file');
   if (!(file instanceof File) || !file.size) {
     setFormStatus(documentForm, 'Choose a document file.', true);
+    return;
+  }
+  if (file.size > 2 * 1024 * 1024) {
+    setFormStatus(documentForm, 'Files must be 2 MB or smaller.', true);
     return;
   }
   button.disabled = true;

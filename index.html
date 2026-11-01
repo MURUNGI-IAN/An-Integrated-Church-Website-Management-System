@@ -33,6 +33,7 @@
         <a href="#gather">Gatherings</a>
         <a href="#give">Giving</a>
         <a href="#contact">Contact</a>
+        <a href="#safeguarding-report">Safeguarding report</a>
         <a class="nav-contact" href="tel:+256753972515">Call the church <span aria-hidden="true">↗</span></a>
       </nav>
     </header>
@@ -202,20 +203,26 @@
         <div class="giving-copy">
           <p class="eyebrow"><span class="eyebrow-line"></span> Generosity in action</p>
           <h2 id="giving-title">Give with<br><em>purpose.</em></h2>
-          <p class="body-copy">Your generosity supports the life and work of the church. We are preparing secure giving options for MTN Mobile Money, Airtel Money, and cards.</p>
+          <p class="body-copy">Your generosity supports the life and work of the church. You can send a gift by MTN Mobile Money or Airtel Money using the official payment details below.</p>
           <div class="giving-uses"><span>01 <b>Church ministry</b></span><span>02 <b>Community care</b></span><span>03 <b>Building fund</b></span></div>
         </div>
-        <form class="giving-form" id="giving-form">
+        <form class="giving-form" id="giving-form" data-mtn-merchant-code="85380938" data-airtel-business-till="6781771">
           <div class="form-topline"><span>GIVING</span><span>UGX <span aria-hidden="true">↘</span></span></div>
           <label class="field-label" for="giving-amount">Choose an amount</label>
           <div class="amount-field"><span>UGX</span><input id="giving-amount" name="amount" type="number" min="1000" step="1000" placeholder="50,000" inputmode="numeric" required></div>
           <label class="field-label" for="giving-purpose">Direct my gift to</label>
           <select id="giving-purpose" name="purpose"><option>Church ministry</option><option>Community care</option><option>Building fund</option><option>Tithe or offering</option></select>
-          <fieldset class="method-fieldset"><legend class="field-label">Payment method</legend><div class="method-options"><label><input type="radio" name="method" value="mobile-money" checked><span>Mobile money</span></label><label><input type="radio" name="method" value="card"><span>Card</span></label></div></fieldset>
-          <button class="button button-red form-submit" type="submit">Continue to give <span aria-hidden="true">↗</span></button>
-          <p class="form-notice">No payment will be taken. Secure MTN, Airtel, and card processing is not configured yet.</p>
+          <fieldset class="method-fieldset"><legend class="field-label">Payment method</legend><div class="method-options"><label><input type="radio" name="method" value="mtn" checked><span>MTN Mobile Money</span></label><label><input type="radio" name="method" value="airtel"><span>Airtel Money</span></label></div></fieldset>
+          <button class="button button-red form-submit" type="submit">Show payment instructions <span aria-hidden="true">↗</span></button>
+          <p class="form-notice">Card payments are not available yet. Never enter or send card details here.</p>
           <p class="form-status" id="giving-status" aria-live="polite"></p>
         </form>
+        <section class="giving-instructions" id="giving-instructions" aria-labelledby="giving-instructions-title" aria-live="polite" hidden>
+          <h3 id="giving-instructions-title">Payment instructions</h3>
+          <p id="giving-instructions-route"></p>
+          <p id="giving-instructions-summary"></p>
+          <p class="form-notice">Confirm the displayed church or business recipient in your mobile money app before authorizing. Keep your transaction ID; this page does not verify or record the payment.</p>
+        </section>
       </section>
 
       <section class="prayer-section section-pad" id="prayer" aria-labelledby="prayer-title">
@@ -253,6 +260,30 @@
           <button class="button button-green" type="submit">Send message <span aria-hidden="true">↗</span></button>
           <p class="form-notice">Your message is encrypted before storage and visible to pastors and administrators. Use the phone number above for urgent help.</p>
           <p class="form-status" id="contact-status" aria-live="polite"></p>
+        </form>
+      </section>
+
+      <section class="prayer-section section-pad" id="safeguarding-report" aria-labelledby="safeguarding-report-title">
+        <div class="prayer-intro">
+          <p class="eyebrow eyebrow-dark"><span class="eyebrow-line"></span> Confidential reporting</p>
+          <h2 id="safeguarding-report-title">Report a safeguarding concern.</h2>
+          <p class="body-copy">Share factual details only. Reports are encrypted and routed to restricted church reviewers. If anyone is in immediate danger, contact local emergency services directly.</p>
+        </div>
+        <form class="prayer-form" id="safeguarding-report-form">
+          <label for="safeguarding-report-type">Report type<select id="safeguarding-report-type" name="report_type" required><option value="incident">Incident</option><option value="complaint">Complaint</option></select></label>
+          <div class="form-row"><label for="safeguarding-incident-date">Date<input id="safeguarding-incident-date" name="incident_date" type="date" required></label><label for="safeguarding-incident-time">Time<input id="safeguarding-incident-time" name="incident_time" type="time" required></label></div>
+          <label for="safeguarding-location">Location<input id="safeguarding-location" name="location" maxlength="200" required></label>
+          <label for="safeguarding-people">People involved<textarea id="safeguarding-people" name="people_involved" rows="2" maxlength="5000" required></textarea></label>
+          <label for="safeguarding-witnesses">Witnesses, if any<textarea id="safeguarding-witnesses" name="witness_names" rows="2" maxlength="3000"></textarea></label>
+          <label for="safeguarding-facts">What happened? Record facts, not opinions.<textarea id="safeguarding-facts" name="factual_description" rows="4" maxlength="10000" required></textarea></label>
+          <label for="safeguarding-action">Action already taken<textarea id="safeguarding-action" name="action_taken" rows="2" maxlength="5000"></textarea></label>
+          <div class="form-row"><label for="safeguarding-reporter-name">Your name<input id="safeguarding-reporter-name" name="reporter_name" maxlength="160" required></label><label for="safeguarding-reporter-contact">Your phone or email<input id="safeguarding-reporter-contact" name="reporter_contact" maxlength="320" required></label></div>
+          <label class="consent-check"><input name="involves_restricted_staff" type="checkbox"><span>This report involves the Senior Pastor or Safeguarding Lead.</span></label>
+          <label class="consent-check"><input name="serious_child_protection" type="checkbox"><span>This is a serious child-protection concern requiring external referral.</span></label>
+          <label class="consent-check"><input name="privacy_acknowledged" type="checkbox" required><span>I understand this sensitive report will be encrypted and accessible only to the designated reviewers.</span></label>
+          <button class="button button-green" type="submit">Submit confidential report</button>
+          <p class="form-notice">Reports involving restricted staff are routed to the Board Chair/Trustee role. Serious child-protection reports cannot be closed internally.</p>
+          <p class="form-status" id="safeguarding-report-status" aria-live="polite"></p>
         </form>
       </section>
 

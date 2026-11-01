@@ -504,12 +504,30 @@ eventList.addEventListener('submit', async (event) => {
   }
 });
 
-document.querySelector('#giving-form').addEventListener('submit', (event) => {
+const givingForm = document.querySelector('#giving-form');
+const givingInstructions = document.querySelector('#giving-instructions');
+givingForm.addEventListener('submit', (event) => {
   event.preventDefault();
-  const status = document.querySelector('#giving-status');
-  apiRequest('/giving/status')
-    .then((result) => setStatus(status, result.message))
-    .catch(() => setStatus(status, 'Online giving is unavailable. Please call +256 753 972 515 to arrange giving.', true));
+  const values = new FormData(givingForm);
+  const provider = values.get('method');
+  const route = document.querySelector('#giving-instructions-route');
+  const summary = document.querySelector('#giving-instructions-summary');
+  const amount = new Intl.NumberFormat('en-UG', { maximumFractionDigits: 0 }).format(Number(values.get('amount')));
+  const purpose = values.get('purpose');
+
+  if (provider === 'airtel') {
+    route.textContent = `Open Airtel Money, choose the business or till payment option, and enter till code ${givingForm.dataset.airtelBusinessTill}.`;
+  } else {
+    route.textContent = `Open MTN MoMo, choose the merchant or business payment option, and enter merchant code ${givingForm.dataset.mtnMerchantCode}.`;
+  }
+  summary.textContent = `Amount: UGX ${amount}. Giving purpose: ${purpose}. Confirm the amount and recipient in the app.`;
+  givingInstructions.hidden = false;
+  document.querySelector('#giving-status').textContent = 'Instructions only: no payment was initiated or confirmed.';
+});
+
+givingForm.addEventListener('input', () => {
+  givingInstructions.hidden = true;
+  document.querySelector('#giving-status').textContent = '';
 });
 
 document.querySelector('#prayer-form').addEventListener('submit', async (event) => {
@@ -573,6 +591,37 @@ document.querySelector('#visitor-form').addEventListener('submit', async (event)
       }),
     });
     setStatus(status, 'Thanks for letting us know. A church team member will follow up.');
+    form.reset();
+  } catch (error) {
+    setStatus(status, error.message, true);
+  }
+});
+
+document.querySelector('#safeguarding-report-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const values = new FormData(form);
+  const status = document.querySelector('#safeguarding-report-status');
+  try {
+    const result = await apiRequest('/safeguarding/reports', {
+      method: 'POST',
+      body: JSON.stringify({
+        report_type: values.get('report_type'),
+        incident_date: values.get('incident_date'),
+        incident_time: values.get('incident_time'),
+        location: values.get('location'),
+        people_involved: values.get('people_involved'),
+        witness_names: values.get('witness_names') || '',
+        factual_description: values.get('factual_description'),
+        action_taken: values.get('action_taken') || '',
+        reporter_name: values.get('reporter_name'),
+        reporter_contact: values.get('reporter_contact'),
+        involves_restricted_staff: values.get('involves_restricted_staff') === 'on',
+        serious_child_protection: values.get('serious_child_protection') === 'on',
+        privacy_acknowledged: values.get('privacy_acknowledged') === 'on',
+      }),
+    });
+    setStatus(status, `Report ${result.id} received. Retain this reference. If anyone is in immediate danger, contact local emergency services.`);
     form.reset();
   } catch (error) {
     setStatus(status, error.message, true);

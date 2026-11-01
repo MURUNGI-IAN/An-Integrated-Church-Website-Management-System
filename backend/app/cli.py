@@ -11,7 +11,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.database import Base, SessionLocal, engine
-from app.models import AdminUser
+from app.models import AdminUser, Branch
 from app.security import hash_password
 
 
@@ -50,6 +50,11 @@ def create_admin(args: argparse.Namespace) -> int:
         print("Enter a valid email address.", file=sys.stderr)
         return 2
 
+    global_roles = {"admin", "senior_pastor", "finance_admin", "regional_overseer"}
+    if args.role not in global_roles and args.branch_id is None:
+        print("Branch-scoped staff must be provisioned with --branch-id.", file=sys.stderr)
+        return 2
+
     Base.metadata.create_all(bind=engine)
     with SessionLocal() as db:
         if db.scalar(select(AdminUser.id).where(AdminUser.email == email)):
@@ -68,10 +73,16 @@ def create_admin(args: argparse.Namespace) -> int:
             print("Password must be at least 14 characters.", file=sys.stderr)
             return 2
 
+        branch = db.get(Branch, args.branch_id) if args.branch_id is not None else None
+        if args.branch_id is not None and (branch is None or not branch.is_active):
+            print("Branch-scoped accounts require an existing active branch.", file=sys.stderr)
+            return 2
+
         user = AdminUser(
             email=email,
             display_name=args.name.strip(),
             role=args.role,
+            branch_id=branch.id if branch else None,
             password_hash=hash_password(password),
         )
         db.add(user)
@@ -96,7 +107,16 @@ def main() -> int:
     create = commands.add_parser("create-admin", help="Provision a staff account; there is no public registration")
     create.add_argument("--email", required=True)
     create.add_argument("--name", default="Church Administrator")
-    create.add_argument("--role", choices=("admin", "editor", "pastor", "treasurer"), default="admin")
+    create.add_argument(
+        "--role",
+        choices=(
+            "admin", "editor", "pastor", "treasurer", "finance_admin", "senior_pastor",
+            "regional_overseer", "safeguarding_lead", "hr_admin", "board_chair", "trustee",
+            "associate_pastor", "licensed_counselor",
+        ),
+        default="admin",
+    )
+    create.add_argument("--branch-id", type=int, help="Required for branch-scoped staff roles")
     create.add_argument("--password-stdin", action="store_true")
     create.set_defaults(handler=create_admin)
     backup = commands.add_parser("backup-db", help="Create a private SQLite database backup")

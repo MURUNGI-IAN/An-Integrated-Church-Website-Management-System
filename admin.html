@@ -4,6 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#153b32">
+    <!-- Set the API origin here when the deployed API is hosted separately. -->
     <meta name="api-base-url" content="">
     <title>Staff Console | Bwala Ministries</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -14,6 +15,7 @@
   </head>
   <body class="admin-page">
     <a class="skip-link" href="#admin-main">Skip to console</a>
+    <noscript><p class="noscript-notice">JavaScript is required to sign in and use the staff console. Enable JavaScript and reload this page.</p></noscript>
     <header class="admin-header">
       <a class="brand" href="index.html"><span class="brand-mark" aria-hidden="true">B<span>+</span></span><span class="brand-name">Bwala Deliverance<br>and Healing Ministries</span></a>
       <a class="admin-public-link" href="index.html">View public website ↗</a>
@@ -37,7 +39,7 @@
           <div><p class="eyebrow eyebrow-dark"><span class="eyebrow-line"></span> Church office</p><h1>Staff console</h1></div>
           <div class="console-account"><span id="staff-identity"></span><button id="sign-out" class="underlined-link" type="button">Sign out</button></div>
         </div>
-        <nav class="console-tabs" aria-label="Staff console sections">
+        <nav class="console-tabs" role="tablist" aria-label="Staff console sections">
           <button type="button" data-tab="pages">Pages</button>
           <button type="button" data-tab="sermons">Sermons</button>
           <button type="button" data-tab="events">Events &amp; RSVPs</button>
@@ -47,6 +49,8 @@
           <button type="button" data-tab="rota">Volunteer rota</button>
           <button type="button" data-tab="groups">Small groups</button>
           <button type="button" data-tab="children">Child safeguarding</button>
+          <button type="button" data-tab="safeguarding">Incident reports</button>
+          <button type="button" data-tab="vetting">Volunteer vetting</button>
           <button type="button" data-tab="contact">Contact inquiries</button>
           <button type="button" data-tab="visitors">Visitor follow-up</button>
           <button type="button" data-tab="prayer">Prayer care</button>
@@ -57,6 +61,7 @@
           <button type="button" data-tab="governance">Governance</button>
           <button type="button" data-tab="analytics">Analytics</button>
           <button type="button" data-tab="branches">Branches</button>
+          <button type="button" data-tab="institutions">Institutions &amp; missions</button>
           <button type="button" data-tab="audit">Audit log</button>
         </nav>
 
@@ -91,7 +96,11 @@
                 <label>How was email consent recorded?<select id="member-email-consent-source"><option value="in_person">In person</option><option value="paper_form">Paper form</option><option value="web_form">Website form</option><option value="member_request">Member request</option><option value="not_provided">Not provided</option></select></label>
                 <label class="staff-check"><input id="member-sms-consent" type="checkbox"><span>SMS updates</span></label>
                 <label>How was SMS consent recorded?<select id="member-sms-consent-source"><option value="in_person">In person</option><option value="paper_form">Paper form</option><option value="web_form">Website form</option><option value="member_request">Member request</option><option value="not_provided">Not provided</option></select></label>
-                <p class="form-notice">Leave channels unchecked unless the member explicitly agreed. This records consent only; messaging is not configured.</p>
+                <label class="staff-check"><input id="member-whatsapp-consent" type="checkbox"><span>WhatsApp updates</span></label>
+                <label>How was WhatsApp consent recorded?<select id="member-whatsapp-consent-source"><option value="in_person">In person</option><option value="paper_form">Paper form</option><option value="web_form">Website form</option><option value="member_request">Not opted in</option><option value="not_provided">Not provided</option></select></label>
+                <label>Non-essential message frequency<select id="member-communication-frequency"><option value="essential_only">Essential only</option><option value="weekly">Weekly (up to 2 non-essential messages)</option><option value="monthly">Monthly</option></select></label>
+                <div class="form-row"><label>Quiet hours start<input id="member-quiet-hours-start" type="time" value="21:00"></label><label>Quiet hours end<input id="member-quiet-hours-end" type="time" value="07:00"></label></div>
+                <p class="form-notice">Quiet hours use Africa/Kampala time. Opt-in is per channel; opt-out and delivery controls will apply when messaging is configured. This form does not send messages.</p>
               </fieldset>
               <label class="staff-check member-consent"><input name="consent_confirmed" type="checkbox" required><span>I confirm the member has consented to this record being stored.</span></label>
               <div class="staff-form-actions"><button class="button button-green" type="submit">Save member</button><button class="text-button" type="reset">Clear</button></div>
@@ -160,6 +169,7 @@
             <form id="group-form" class="staff-form">
               <input name="id" type="hidden">
               <label>Group name<input name="name" maxlength="160" required></label>
+              <label>Branch<select class="branch-select" name="branch_id"><option value="">Unassigned</option></select></label>
               <label>Description<textarea name="description" rows="4" maxlength="3000"></textarea></label>
               <label>Meeting area<input name="meeting_area" maxlength="160" placeholder="Neighborhood or public landmark" required></label>
               <div class="form-row"><label>Meeting day<select name="meeting_day" required><option value="">Choose a day</option><option>Monday</option><option>Tuesday</option><option>Wednesday</option><option>Thursday</option><option>Friday</option><option>Saturday</option><option>Sunday</option></select></label><label>Meeting time<input name="meeting_time" maxlength="40" placeholder="4:00 PM" required></label></div>
@@ -171,7 +181,10 @@
               <div class="staff-form-actions"><button class="button button-green" type="submit">Save group</button><button class="text-button" type="reset">Clear</button></div>
               <p class="form-status" aria-live="polite"></p>
             </form>
-            <div><h3 class="list-heading">Group listings</h3><div class="admin-list" id="groups-list"></div></div>
+            <div>
+              <div class="member-list-heading"><h3 class="list-heading">Group listings</h3><label>Branch<select id="group-branch-filter" class="branch-select" data-empty-label="All branches"><option value="">All branches</option></select></label></div>
+              <div class="admin-list" id="groups-list"></div>
+            </div>
           </div>
           <section class="group-waitlist-admin" id="group-waitlist-panel" hidden aria-labelledby="group-waitlist-title">
             <h3 class="list-heading" id="group-waitlist-title">Waitlist</h3>
@@ -209,6 +222,29 @@
                 <div class="admin-list prayer-list" id="child-attendance-list" aria-live="polite"></div>
               </div>
             </div>
+          </div>
+        </section>
+
+        <section class="console-panel" id="panel-safeguarding" data-panel="safeguarding" aria-labelledby="safeguarding-admin-title" hidden>
+          <div class="console-panel-heading"><div><p class="eyebrow eyebrow-dark"><span class="eyebrow-line"></span> Restricted access</p><h2 id="safeguarding-admin-title">Safeguarding reports</h2></div><p>Only safeguarding leads, senior pastors, and board reviewers may access their assigned cases. Serious child-protection concerns must be referred externally; this system cannot contact authorities.</p></div>
+          <div class="admin-list" id="safeguarding-reports-list" aria-live="polite"></div>
+        </section>
+
+        <section class="console-panel" id="panel-vetting" data-panel="vetting" aria-labelledby="vetting-title" hidden>
+          <div class="console-panel-heading"><div><p class="eyebrow eyebrow-dark"><span class="eyebrow-line"></span> Restricted personnel records</p><h2 id="vetting-title">Volunteer vetting</h2></div><p>ID and reference details are encrypted. Access is limited to Admin/HR, Safeguarding Lead, and Senior Pastor. Records cannot be deleted; completed service is retained for seven years.</p></div>
+          <div class="console-columns">
+            <form id="volunteer-vetting-form" class="staff-form">
+              <h3 class="list-heading">Start a vetting record</h3>
+              <label>Volunteer<select name="member_id" id="vetting-member" required><option value="">Loading members…</option></select></label>
+              <label>Government ID<input name="government_id" maxlength="80" required></label>
+              <label>Reference names<textarea name="reference_names" rows="2" maxlength="2000" required></textarea></label>
+              <label>Reference contacts<textarea name="reference_contacts" rows="2" maxlength="3000" required></textarea></label>
+              <label class="staff-check"><input name="background_check_consent" type="checkbox" required><span>Consent for background checks is recorded.</span></label>
+              <label>Service start date<input name="service_started_at" type="date"></label>
+              <div class="staff-form-actions"><button class="button button-green" type="submit">Create pending vetting</button></div>
+              <p class="form-status" aria-live="polite"></p>
+            </form>
+            <div><h3 class="list-heading">Vetting records</h3><div class="admin-list" id="volunteer-vetting-list"></div></div>
           </div>
         </section>
 
@@ -375,13 +411,19 @@
           <div class="console-panel-heading"><div><p class="eyebrow eyebrow-dark"><span class="eyebrow-line"></span> Church operations</p><h2 id="resources-title">Resource booking</h2></div><p>Bookings use the church’s local time zone as entered by staff. Overlapping pending or approved reservations are blocked.</p></div>
           <div class="console-columns">
             <form id="resource-form" class="staff-form">
+              <input name="id" type="hidden">
               <h3 class="list-heading">Add resource</h3>
               <label>Resource name<input name="name" maxlength="160" required></label>
               <label>Description<textarea name="description" rows="3" maxlength="1000"></textarea></label>
+              <label>Branch<select class="branch-select" name="branch_id"><option value="">Unassigned</option></select></label>
+              <label class="staff-check"><input name="is_active" type="checkbox" checked><span>Resource is active</span></label>
               <div class="staff-form-actions"><button class="button button-green" type="submit">Save resource</button></div>
               <p class="form-status" aria-live="polite"></p>
             </form>
-            <div><h3 class="list-heading">Resources</h3><div class="admin-list" id="resources-list"></div></div>
+            <div>
+              <div class="member-list-heading"><h3 class="list-heading">Resources</h3><label>Branch<select id="resource-branch-filter" class="branch-select" data-empty-label="All branches"><option value="">All branches</option></select></label></div>
+              <div class="admin-list" id="resources-list"></div>
+            </div>
           </div>
           <div class="console-columns">
             <form id="resource-booking-form" class="staff-form">
@@ -440,6 +482,25 @@
           </div>
         </section>
 
+        <section class="console-panel" id="panel-institutions" data-panel="institutions" aria-labelledby="institutions-title" hidden>
+          <div class="console-panel-heading"><div><p class="eyebrow eyebrow-dark"><span class="eyebrow-line"></span> Phase 4 · Growth</p><h2 id="institutions-title">Institutions &amp; missions</h2></div><p>Starter register for church institutions and mission fields. Do not enter personal or beneficiary details; confirm classifications and reporting rules with church leadership.</p></div>
+          <div class="console-columns">
+            <form id="institutions-form" class="staff-form">
+              <input name="id" type="hidden">
+              <h3 class="list-heading">Institution or mission details</h3>
+              <label>Record type<select name="record_type" required><option value="school">School</option><option value="clinic">Clinic</option><option value="savings_group">Savings group</option><option value="church_plant">Church plant</option><option value="mission_field">Mission field</option></select></label>
+              <label>Name<input name="name" maxlength="160" required></label>
+              <label>Location<input name="location" maxlength="200"></label>
+              <label>Description<textarea name="description" rows="4" maxlength="3000"></textarea></label>
+              <label>Branch<select class="branch-select" name="branch_id"><option value="">Unassigned</option></select></label>
+              <label class="staff-check"><input name="is_active" type="checkbox" checked><span>Record is active</span></label>
+              <div class="staff-form-actions"><button class="button button-green" type="submit">Save record</button><button class="text-button" type="reset">Clear</button></div>
+              <p class="form-status" aria-live="polite"></p>
+            </form>
+            <div><h3 class="list-heading">Registered records</h3><div class="admin-list" id="institutions-list"></div></div>
+          </div>
+        </section>
+
         <section class="console-panel" id="panel-analytics" data-panel="analytics" aria-labelledby="analytics-title" hidden>
           <div class="console-panel-heading"><div><p class="eyebrow eyebrow-dark"><span class="eyebrow-line"></span> Phase 4 · Analytics</p><h2 id="analytics-title">Ministry overview</h2></div><p>Aggregated operational totals only. This dashboard does not display member identities, pastoral care, children, donor, or financial details.</p></div>
           <form id="analytics-filter-form" class="staff-form">
@@ -458,6 +519,7 @@
           <div class="console-panel-heading"><div><p class="eyebrow eyebrow-dark"><span class="eyebrow-line"></span> Phase 4 · Governance</p><h2 id="governance-title">Meetings &amp; resolutions</h2></div><p>Minutes and resolution text are encrypted at rest and visible only to administrators and pastors. Record approved decisions through the resolution status workflow; formal voting and succession rules are not configured here.</p></div>
           <div class="console-columns">
             <form id="governance-meeting-form" class="staff-form">
+              <input name="id" type="hidden">
               <h3 class="list-heading">Record a meeting</h3>
               <label>Meeting title<input name="title" maxlength="200" required></label>
               <label>Date<input name="meeting_date" type="date" required></label>

@@ -105,6 +105,7 @@ def require_roles(*roles: str):
             raise unauthorized
         if user.role not in roles:
             raise HTTPException(status_code=403, detail="Insufficient permissions")
+        db.info["staff_actor"] = user
         return user
 
     return dependency

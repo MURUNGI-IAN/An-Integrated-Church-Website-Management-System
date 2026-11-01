@@ -18,6 +18,11 @@ class AdminUser(Base):
     display_name: Mapped[str] = mapped_column(String(120))
     password_hash: Mapped[str] = mapped_column(String(256))
     role: Mapped[str] = mapped_column(String(32), default="admin")
+    branch_id: Mapped[int | None] = mapped_column(
+        ForeignKey("branches.id", name="fk_admin_users_branch_id_branches", use_alter=True),
+        nullable=True,
+        index=True,
+    )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
@@ -41,6 +46,58 @@ class Branch(Base):
     location: Mapped[str] = mapped_column(String(200), default="")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     created_by_id: Mapped[int] = mapped_column(ForeignKey("admin_users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class InstitutionMissionRecord(Base):
+    __tablename__ = "institution_mission_records"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    record_type: Mapped[str] = mapped_column(String(32), index=True)
+    name: Mapped[str] = mapped_column(String(160), index=True)
+    location: Mapped[str] = mapped_column(String(200), default="")
+    description: Mapped[str] = mapped_column(Text, default="")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    branch_id: Mapped[int | None] = mapped_column(ForeignKey("branches.id"), nullable=True, index=True)
+    created_by_id: Mapped[int] = mapped_column(ForeignKey("admin_users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class SafeguardingReport(Base):
+    __tablename__ = "safeguarding_reports"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    encrypted_payload: Mapped[str] = mapped_column(Text)
+    involves_restricted_staff: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    serious_child_protection: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    status: Mapped[str] = mapped_column(String(32), default="new", index=True)
+    retention_until: Mapped[date] = mapped_column(Date, index=True)
+    external_referral_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    investigation_started_by_id: Mapped[int | None] = mapped_column(ForeignKey("admin_users.id"), nullable=True)
+    senior_resolution_approval_by_id: Mapped[int | None] = mapped_column(ForeignKey("admin_users.id"), nullable=True)
+    trustee_resolution_approval_by_id: Mapped[int | None] = mapped_column(ForeignKey("admin_users.id"), nullable=True)
+    updated_by_id: Mapped[int | None] = mapped_column(ForeignKey("admin_users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class VolunteerVettingRecord(Base):
+    __tablename__ = "volunteer_vetting_records"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    member_id: Mapped[int] = mapped_column(ForeignKey("members.id"), index=True)
+    encrypted_details: Mapped[str] = mapped_column(Text)
+    background_check_status: Mapped[str] = mapped_column(String(16), default="pending", index=True)
+    references_checked: Mapped[bool] = mapped_column(Boolean, default=False)
+    training_completed_at: Mapped[date | None] = mapped_column(Date, nullable=True)
+    service_started_at: Mapped[date] = mapped_column(Date)
+    service_ended_at: Mapped[date | None] = mapped_column(Date, nullable=True)
+    retention_until: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
+    status: Mapped[str] = mapped_column(String(24), default="pending", index=True)
+    created_by_id: Mapped[int] = mapped_column(ForeignKey("admin_users.id"))
+    reviewed_by_id: Mapped[int | None] = mapped_column(ForeignKey("admin_users.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
@@ -148,6 +205,7 @@ class SmallGroup(Base):
     longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
     is_open: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     is_published: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    branch_id: Mapped[int | None] = mapped_column(ForeignKey("branches.id"), nullable=True, index=True)
     updated_by_id: Mapped[int] = mapped_column(ForeignKey("admin_users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
@@ -188,6 +246,10 @@ class MemberCommunicationConsent(Base):
     channel: Mapped[str] = mapped_column(String(16))
     is_consented: Mapped[bool] = mapped_column(Boolean, default=False)
     consent_source: Mapped[str] = mapped_column(String(32))
+    delivery_frequency: Mapped[str] = mapped_column(String(24), default="essential_only", server_default="essential_only")
+    quiet_hours_start: Mapped[str] = mapped_column(String(5), default="21:00", server_default="21:00")
+    quiet_hours_end: Mapped[str] = mapped_column(String(5), default="07:00", server_default="07:00")
+    timezone: Mapped[str] = mapped_column(String(64), default="Africa/Kampala", server_default="Africa/Kampala")
     consented_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     updated_by_id: Mapped[int] = mapped_column(ForeignKey("admin_users.id"))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
@@ -261,6 +323,7 @@ class VolunteerAvailability(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     member_id: Mapped[int] = mapped_column(ForeignKey("members.id"), index=True)
+    branch_id: Mapped[int | None] = mapped_column(ForeignKey("branches.id"), nullable=True, index=True)
     service_name: Mapped[str] = mapped_column(String(120))
     service_date: Mapped[date] = mapped_column(Date, index=True)
     is_available: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -291,6 +354,7 @@ class RotaAssignment(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     member_id: Mapped[int] = mapped_column(ForeignKey("members.id"), index=True)
+    branch_id: Mapped[int | None] = mapped_column(ForeignKey("branches.id"), nullable=True, index=True)
     service_name: Mapped[str] = mapped_column(String(120))
     service_date: Mapped[date] = mapped_column(Date, index=True)
     role_name: Mapped[str] = mapped_column(String(120))
@@ -400,6 +464,7 @@ class ChurchResource(Base):
     name: Mapped[str] = mapped_column(String(160), unique=True)
     description: Mapped[str] = mapped_column(String(1000), default="")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    branch_id: Mapped[int | None] = mapped_column(ForeignKey("branches.id"), nullable=True, index=True)
     created_by_id: Mapped[int] = mapped_column(ForeignKey("admin_users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)

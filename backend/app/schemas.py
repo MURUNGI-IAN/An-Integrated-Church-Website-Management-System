@@ -170,6 +170,7 @@ class SmallGroupInput(BaseModel):
     longitude: float | None = Field(default=None, ge=-180, le=180)
     is_open: bool = True
     is_published: bool = False
+    branch_id: int | None = Field(default=None, ge=1)
 
     @model_validator(mode="after")
     def coordinates_must_be_paired(self):
@@ -221,13 +222,17 @@ class MemberOutput(MemberProfileInput):
 
 
 class CommunicationConsentInput(BaseModel):
-    channel: Literal["email", "sms"]
+    channel: Literal["email", "sms", "whatsapp"]
     is_consented: bool
     consent_source: Literal["in_person", "paper_form", "web_form", "member_request", "not_provided"]
+    delivery_frequency: Literal["weekly", "monthly", "essential_only"] = "essential_only"
+    quiet_hours_start: str = Field(default="21:00", pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$")
+    quiet_hours_end: str = Field(default="07:00", pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$")
+    timezone: Literal["Africa/Kampala"] = "Africa/Kampala"
 
 
 class CommunicationConsentUpdate(BaseModel):
-    preferences: list[CommunicationConsentInput] = Field(min_length=1, max_length=2)
+    preferences: list[CommunicationConsentInput] = Field(min_length=1, max_length=3)
 
     @field_validator("preferences")
     @classmethod
@@ -349,6 +354,7 @@ class VolunteerAvailabilityOutput(BaseModel):
     service_date: date
     is_available: bool
     updated_at: datetime
+    branch_id: int | None = None
 
 
 class AvailabilityInviteInput(BaseModel):
@@ -398,6 +404,7 @@ class RotaAssignmentOutput(BaseModel):
     service_date: date
     role_name: str
     created_at: datetime
+    branch_id: int | None = None
 
 
 class FinanceEntryInput(BaseModel):
@@ -572,6 +579,7 @@ class ChurchResourceInput(BaseModel):
     name: str = Field(min_length=1, max_length=160)
     description: str = Field(default="", max_length=1000)
     is_active: bool = True
+    branch_id: int | None = Field(default=None, ge=1)
 
 
 class ChurchResourceOutput(ChurchResourceInput):
@@ -612,6 +620,7 @@ class ResourceBookingOutput(BaseModel):
     reviewed_by_id: int | None
     created_at: datetime
     reviewed_at: datetime | None
+    branch_id: int | None = None
 
 
 class StaffDocumentInput(BaseModel):
@@ -723,3 +732,110 @@ class BranchOutput(BranchInput):
     created_by_id: int
     created_at: datetime
     updated_at: datetime
+
+
+class InstitutionMissionInput(BaseModel):
+    record_type: Literal["school", "clinic", "savings_group", "church_plant", "mission_field"]
+    name: str = Field(min_length=1, max_length=160)
+    location: str = Field(default="", max_length=200)
+    description: str = Field(default="", max_length=3000)
+    is_active: bool = True
+    branch_id: int | None = Field(default=None, ge=1)
+
+
+class InstitutionMissionOutput(InstitutionMissionInput):
+    id: int
+    created_by_id: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class SafeguardingReportInput(BaseModel):
+    report_type: Literal["incident", "complaint"]
+    incident_date: date
+    incident_time: str = Field(pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$")
+    location: str = Field(min_length=1, max_length=200)
+    people_involved: str = Field(min_length=1, max_length=5000)
+    witness_names: str = Field(default="", max_length=3000)
+    factual_description: str = Field(min_length=10, max_length=10000)
+    action_taken: str = Field(default="", max_length=5000)
+    reporter_name: str = Field(min_length=1, max_length=160)
+    reporter_contact: str = Field(min_length=5, max_length=320)
+    involves_restricted_staff: bool = False
+    serious_child_protection: bool = False
+    privacy_acknowledged: bool
+
+
+class SafeguardingReportOutput(BaseModel):
+    id: int
+    report_type: Literal["incident", "complaint"]
+    incident_date: date
+    incident_time: str
+    location: str
+    people_involved: str
+    witness_names: str
+    factual_description: str
+    action_taken: str
+    reporter_name: str
+    reporter_contact: str
+    involves_restricted_staff: bool
+    serious_child_protection: bool
+    status: str
+    retention_until: date
+    external_referral_at: datetime | None
+    investigation_started_by_id: int | None
+    senior_resolution_approval_by_id: int | None
+    trustee_resolution_approval_by_id: int | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class SafeguardingReportStatusInput(BaseModel):
+    status: Literal[
+        "investigating",
+        "pending_resolution",
+        "approve_resolution",
+        "reject_resolution",
+        "referred_to_authorities",
+    ]
+
+
+class VolunteerVettingInput(BaseModel):
+    member_id: int = Field(ge=1)
+    government_id: str = Field(min_length=1, max_length=80)
+    reference_names: str = Field(min_length=1, max_length=2000)
+    reference_contacts: str = Field(min_length=1, max_length=3000)
+    background_check_consent: bool
+    service_started_at: date | None = None
+
+
+class VolunteerVettingOutput(BaseModel):
+    id: int
+    member_id: int
+    member_name: str
+    government_id: str
+    reference_names: str
+    reference_contacts: str
+    background_check_consent: bool
+    background_check_status: str
+    references_checked: bool
+    training_completed_at: date | None
+    service_started_at: date
+    service_ended_at: date | None
+    retention_until: date | None
+    status: str
+    created_by_id: int
+    reviewed_by_id: int | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class VolunteerVettingStatusInput(BaseModel):
+    status: Literal["approved", "rejected", "service_ended"]
+    service_ended_at: date | None = None
+
+
+class VolunteerVettingReviewInput(BaseModel):
+    background_check_status: Literal["pending", "clear", "flagged"]
+    references_checked: bool
+    training_completed_at: date | None = None

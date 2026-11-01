@@ -184,6 +184,11 @@ h2 em { color: var(--red); font-weight: 400; }
 .giving-uses span { display: flex; gap: 19px; padding: 11px 0; border-bottom: 1px solid #d8d0bf; color: var(--red); font-size: 9px; font-weight: 700; }
 .giving-uses b { color: var(--ink); font-size: 11px; font-weight: 600; }
 .giving-form { padding: 27px 28px 24px; background: white; }
+.giving-instructions { grid-column: 2; padding: 20px 24px; border-top: 2px solid var(--green); background: white; }
+.giving-instructions[hidden] { display: none; }
+.giving-instructions h3 { margin: 0 0 10px; font-family: var(--serif); font-size: 21px; font-weight: 400; }
+.giving-instructions p { margin: 8px 0; color: var(--ink); font-size: 11px; line-height: 1.6; }
+.giving-instructions .form-notice { color: var(--muted); font-size: 9px; }
 .form-topline { display: flex; justify-content: space-between; margin-bottom: 24px; color: var(--red); font-size: 9px; font-weight: 700; }
 .field-label, .prayer-form label, .newsletter-form label { display: block; color: var(--ink); font-size: 10px; font-weight: 700; }
 .amount-field { display: flex; align-items: center; gap: 12px; margin: 8px 0 19px; padding: 12px 0; border-bottom: 1px solid var(--line); }
@@ -260,9 +265,11 @@ h2 em { color: var(--red); font-weight: 400; }
 .console-tabs { display: flex; gap: 0; margin: 36px 0 34px; overflow-x: auto; border-bottom: 1px solid var(--line); }
 .console-tabs button { flex: none; padding: 13px 17px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); font-size: 11px; font-weight: 600; cursor: pointer; }
 .console-tabs button[aria-selected="true"] { border-bottom-color: var(--red); color: var(--ink); }
+.console-tabs button:focus-visible, .admin-list-tools input:focus-visible, .admin-list-more:focus-visible { outline: 2px solid var(--green); outline-offset: 3px; }
 .console-panel-heading { display: flex; align-items: end; justify-content: space-between; gap: 30px; margin-bottom: 31px; }
 .console-panel-heading h2 { font-size: 38px; }
 .console-panel-heading p:last-child { max-width: 310px; margin: 0 0 4px; color: var(--muted); font-size: 10px; line-height: 1.7; }
+.console-panel-heading .console-quick-guide { max-width: 310px; margin: 8px 0 0; color: var(--green); font-size: 11px; line-height: 1.5; }
 .console-columns { display: grid; grid-template-columns: minmax(290px, .8fr) minmax(350px, 1.2fr); gap: 52px; align-items: start; }
 .staff-form { padding: 23px; background: white; border-top: 2px solid var(--green); }
 .staff-form input[type="hidden"] { display: none; }
@@ -274,7 +281,14 @@ h2 em { color: var(--red); font-weight: 400; }
 .text-button { padding: 7px 0; border: 0; border-bottom: 1px solid var(--line); background: transparent; color: var(--muted); font-size: 10px; cursor: pointer; }
 .list-heading { margin: 0 0 12px; font-size: 11px; font-weight: 700; }
 .admin-list { border-top: 1px solid var(--line); }
+.admin-list-tools { display: flex; align-items: end; gap: 12px; margin: 0 0 12px; }
+.admin-list-tools[hidden] { display: none; }
+.admin-list-search { display: grid; flex: 1; gap: 5px; color: var(--muted); font-size: 10px; }
+.admin-list-search input { width: 100%; min-height: 38px; padding: 8px 10px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); font: inherit; }
+.admin-list-more { min-height: 38px; padding: 8px 12px; border: 1px solid var(--line); background: var(--surface); color: var(--green); font: inherit; font-size: 11px; font-weight: 700; cursor: pointer; }
+.admin-list-more[hidden] { display: none; }
 .admin-list-item { display: flex; align-items: start; justify-content: space-between; gap: 15px; padding: 14px 0; border-bottom: 1px solid var(--line); }
+.admin-list-item[hidden] { display: none; }
 .admin-list-item h3 { margin: 0; font-family: var(--serif); font-size: 18px; font-weight: 400; }
 .admin-list-item p { margin: 3px 0 0; color: var(--muted); font-size: 10px; line-height: 1.6; }
 .admin-list-item button, .registrations-button { flex: none; padding: 5px 0; border: 0; border-bottom: 1px solid var(--line); background: none; color: var(--green); font-size: 9px; font-weight: 700; cursor: pointer; }
@@ -291,6 +305,7 @@ h2 em { color: var(--red); font-weight: 400; }
 .child-checkout-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 12px; }
 .child-checkout-controls select { min-width: min(260px, 100%); min-height: 34px; padding: 5px 8px; border: 1px solid var(--line); background: white; font-size: 10px; }
 .list-empty { padding: 17px 0; color: var(--muted); font-size: 11px; }
+.noscript-notice { margin: 16px auto; max-width: 1120px; padding: 12px 16px; border-left: 3px solid var(--red); background: var(--surface); color: var(--ink); font-size: 13px; }
 .registration-results { margin-top: 26px; }
 .registration-results h3 { font-family: var(--serif); font-size: 21px; font-weight: 400; }
 .registration-row { padding: 9px 0; border-bottom: 1px solid var(--line); font-size: 10px; }
@@ -406,6 +421,7 @@ h2 em { color: var(--red); font-weight: 400; }
   .gather-card p { min-height: auto; }
   .giving-section { grid-template-columns: 1fr; gap: 35px; padding-top: 78px; padding-bottom: 80px; }
   .giving-form { padding: 23px 19px; }
+  .giving-instructions { grid-column: 1; }
   .prayer-section { grid-template-columns: 1fr; gap: 38px; padding-top: 78px; padding-bottom: 80px; }
   .form-row { grid-template-columns: 1fr; gap: 0; }
   .newsletter-band { display: block; padding: 58px 22px; }
@@ -429,6 +445,8 @@ h2 em { color: var(--red); font-weight: 400; }
   .console-panel-heading { display: block; margin-bottom: 24px; }
   .console-panel-heading h2 { font-size: 34px; }
   .console-panel-heading p:last-child { margin-top: 12px; }
+  .console-panel-heading .console-quick-guide { margin-top: 8px; }
+  .admin-list-tools { align-items: stretch; flex-direction: column; }
   .console-columns { grid-template-columns: minmax(0, 1fr); gap: 32px; }
   .staff-form { padding: 19px 15px; }
   .admin-footer { align-items: start; flex-direction: column; padding: 20px; }

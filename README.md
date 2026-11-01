@@ -1,3 +1,4 @@
+| Payments | Manual instructions only | MTN merchant and Airtel business-till instructions are shown; automated collection, payment confirmation, and card processing require provider integrations |
 Bwala Deliverance and Healing Ministries International (Masaka)
 
 An Integrated Church Website & Management System
@@ -110,7 +111,9 @@ The child API verifies stored authorization but cannot verify the identity of th
 
 Member endpoints are `POST /api/v1/admin/members` (requires `consent_confirmed: true`), `GET /api/v1/admin/members` (supports `status=active|inactive|all`, `limit`, and `offset`), `GET /api/v1/admin/members/{id}`, `PUT /api/v1/admin/members/{id}`, and `PATCH /api/v1/admin/members/{id}/status?new_status=inactive`.
 
-SMS/email communication consent is stored separately from member-record consent. Administrators and pastors can review it with `GET /api/v1/admin/members/{id}/communication-consents` and update it with `PUT /api/v1/admin/members/{id}/communication-consents`. Channels default to opted out; an email address or phone number and an affirmative consent source are required to opt in. No notification is sent by these endpoints.
+Email/SMS/WhatsApp consent is stored separately from member-record consent. Administrators and pastors can review it with `GET /api/v1/admin/members/{id}/communication-consents` and update it with `PUT /api/v1/admin/members/{id}/communication-consents`. Channels default to opted out; an email address or phone number and an affirmative consent source are required to opt in. Per-channel preferences record weekly/monthly/essential-only frequency and quiet hours (default 21:00–07:00 Africa/Kampala). No notification is sent by these endpoints; delivery caps, one-click unsubscribe links, STOP webhooks, and the 24-hour opt-out SLA require a configured messaging provider and are not active yet.
+
+Safeguarding reports can be submitted at `POST /api/v1/safeguarding/reports`; payloads are encrypted and retained for 25 years. `GET /api/v1/admin/safeguarding/reports` and the status endpoint are role-partitioned: Safeguarding Leads/Senior Pastors review ordinary cases, Board Chair/Trustees review reports involving restricted staff and pending second approvals. Serious child-protection cases cannot be internally resolved; a Safeguarding Lead must record that an external referral was made. This system does not contact authorities. Volunteer vetting records are encrypted and restricted to Admin/HR/Safeguarding Lead/Senior Pastor; only Safeguarding Leads can enter check results and decide approval. Records are retained until seven years after service ends and cannot be deleted through the API. These retention and safeguarding rules require qualified legal review before live use.
 
 Attendance endpoints are `GET /api/v1/admin/attendance/members` (IDs and names only), `POST /api/v1/admin/attendance`, `GET /api/v1/admin/attendance?service_date=YYYY-MM-DD`, and `PATCH /api/v1/admin/attendance/{id}/check-out`. Attendance can be managed by administrators, editors, and pastors.
 
@@ -148,7 +151,9 @@ The first Phase 4 governance deliverable is a private register for leadership me
 
 The Phase 4 analytics overview is available to administrators and pastors at `GET /api/v1/admin/analytics/overview`, with optional `period_start` and `period_end` dates (maximum 366 days; defaults to the last 30 days). It reports aggregate active-member, attendance, visitor follow-up, published event and registration, published small-group, and open governance-action counts. The staff console has matching date filters. It intentionally excludes member identities, child records, pastoral-care details, donor information, and financial amounts; finance reporting remains in the treasurer/admin finance workflow.
 
-The initial multi-branch foundation follows the shared-staff model. Administrators can create, update, list, and archive branches through `POST`, `GET`, and `PUT /api/v1/admin/branches`; archived branches remain visible when `include_inactive=true`. Branches are not deleted. This registry does not yet assign members, attendance, events, finance, or governance records to a branch, and staff access remains unchanged. Add branch names with church leadership before tagging or moving existing records.
+The initial multi-branch foundation follows the shared-staff model. Administrators can create, update, list, and archive branches through `POST`, `GET`, and `PUT /api/v1/admin/branches`; archived branches remain visible when `include_inactive=true`. Branches are not deleted. Optional branch IDs are supported on member, attendance, event, finance, offering-count, governance, small-group, and resource records; resource bookings inherit their resource's branch. Group/resource staff lists and analytics can be filtered by branch. Existing records remain unassigned until staff update them; staff retain cross-branch access. Child, care, visitor, volunteer, document, and certificate records are not branch-tagged, and branch-level permissions are not implemented. Add branch names with church leadership before assigning existing records.
+
+A starter institutions and missions register supports schools, clinics, savings groups, church plants, and mission fields. Administrators and pastors can create, update, list, and deactivate records; changes are audited and records may be branch-tagged. The register contains name, location, and a description only; it is not a beneficiary, staffing, finance, or outcomes-management system. Do not enter personal or beneficiary details in descriptions. Church leadership must approve classifications and data-handling rules before operational use.
 
 Public offline support is an installable web app served over HTTPS (or localhost for development). Its service worker caches the public shell only, never staff pages or API responses. The public client separately retains successful responses for the public events, sermons, groups, published pages, and current-alert endpoints in this browser, and uses those cached responses if the network request fails. Cached information may be stale; data is only available offline after it has been loaded once while online. Forms do not queue or submit offline. External images and fonts require a connection.
 
@@ -182,6 +187,31 @@ Finance and budgeting, pastoral care alerts, small groups, resource booking, doc
 Phase 4 – Growth and Scale (governance meeting and resolution register started)
 
 Governance, analytics, multi-branch support, captions and translation, offline support, institutions and missions, and integrations.
+
+### Phase completion checklist (audit: 2026-11-01)
+
+Status is based on the code and documentation in this repository, not a church or production sign-off. A phase is complete only after its remaining work is implemented, tested, and accepted by the responsible church staff; provider-dependent items also require provider configuration and sandbox verification.
+
+| Phase | Status | Remaining work and completion checks |
+| --- | --- | --- |
+| 1 – Public presence and security | Partial | Configure and verify online giving with the selected providers, including payment confirmation and reconciliation. Newsletter signup stores consented addresses but does not deliver messages. Complete deployment checks for HTTPS, off-site backups, and tested restore. |
+| 1 – Public presence and security | Partial | Manual MTN and Airtel payment instructions are configured. Implement and verify provider integrations, payment confirmation, reconciliation, and card checkout through a selected hosted payment gateway. Newsletter signup stores consented addresses but does not deliver messages. Complete deployment checks for HTTPS, off-site backups, and tested restore. |
+| 2 – Core operations | Partial | Member, attendance, child check-in, volunteer availability/rota, and emergency-alert workflows exist. Encrypted safeguarding incident/complaint intake and volunteer-vetting records now implement the supplied role, review, and retention rules. Email/SMS/WhatsApp consent preferences are recorded, but delivery, frequency enforcement, STOP/unsubscribe, push delivery, and rota reminders need providers. Background checks and external authority referrals happen outside the system; obtain legal review and staff acceptance before live use. |
+| 3 – Finance and care | Partial | The manual finance/care baseline exists. Payroll, payment-provider integrations, giving statements, and counseling appointment scheduling are not implemented. Reconcile this implementation against the full Phase 3 workbook with the treasurer and pastoral staff; the workbook is not in this repository. |
+| 4 – Growth and scale | Partial | Governance meeting/resolution records, aggregate analytics, a branch registry with optional tagging for selected records (including groups/resources), a starter institutions/missions register, and public read-only offline caching exist. Formal voting/quorum, succession tracking, branch-level permissions, tagging remaining record types, full institution/mission operations, captions/translations, and provider integrations remain. Offline forms do not queue submissions. Obtain policy, language, branch, and provider decisions before implementation. |
+
+### Cross-phase release gates
+
+- [ ] Church staff validate the 73-problem plan and sign off each applicable workflow; attach the current workbook to the project before claiming row-by-row completion.
+- [ ] A qualified advisor confirms launch requirements for sensitive records, consent, child safeguarding, and applicable Ugandan law.
+- [ ] Production deployment has HTTPS, protected secrets, off-site backups, and a tested recovery procedure.
+- [x] Backend suite passes: `PYTHONPATH=. python3 -m pytest -q tests` from `backend/` (30 passed on 2026-11-01).
+- [x] Frontend JavaScript syntax checks pass, and the public page, staff console, and core assets return HTTP 200 from the local static server (2026-11-01).
+- [x] Resolve the supplied staff-console fixes F-01 through F-14 in source; F-01 and F-11 were already present, and F-12 was not applicable because no inline `MutationObserver` script was present.
+- [x] Playwright smoke tests pass: public mobile navigation, staff sign-in error handling, manual MTN/Airtel giving instructions, public safeguarding intake, and Safeguarding Lead vetting workspace (5 passed on 2026-11-01).
+- [ ] Complete role-specific and end-to-end browser acceptance for all public and staff workflows before release.
+
+The passing run emits one Starlette deprecation warning because `httpx` is used with `starlette.testclient`; update the test-client dependency when the project adopts the recommended replacement.
 
 Before building each phase, the problem list is validated with church staff (pastor, treasurer, secretary, youth leader, and volunteer coordinator).
 

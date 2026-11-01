@@ -11,14 +11,14 @@ from urllib.parse import quote
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import func, or_, select, update
+from sqlalchemy import event, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import Session, sessionmaker, with_loader_criteria
 
 from app.config import get_settings
 from app.certificate_pdf import render_certificate_pdf
 from app.database import Base, engine, get_db
-from app.models import AdminUser, AuditLog, AvailabilityInvite, Branch, ChildAttendance, ChildPickupAuthorization, ChildProfile, ChurchEvent, ChurchResource, ContactInquiry, EmergencyAlert, EventRegistration, FinanceBudget, FinanceEntry, FinancePledge, GovernanceMeeting, GovernanceResolution, GroupWaitlist, Member, MemberAttendance, MemberCertificate, MemberCommunicationConsent, NewsletterSubscriber, OfferingCountBatch, PastoralCareTask, PrayerRequest, ResourceBooking, RotaAssignment, Sermon, SitePage, SmallGroup, StaffDocument, VisitorVisit, VolunteerAvailability
+from app.models import AdminUser, AuditLog, AvailabilityInvite, Branch, ChildAttendance, ChildPickupAuthorization, ChildProfile, ChurchEvent, ChurchResource, ContactInquiry, EmergencyAlert, EventRegistration, FinanceBudget, FinanceEntry, FinancePledge, GovernanceMeeting, GovernanceResolution, GroupWaitlist, InstitutionMissionRecord, Member, MemberAttendance, MemberCertificate, MemberCommunicationConsent, NewsletterSubscriber, OfferingCountBatch, PastoralCareTask, PrayerRequest, ResourceBooking, RotaAssignment, SafeguardingReport, Sermon, SitePage, SmallGroup, StaffDocument, VisitorVisit, VolunteerAvailability, VolunteerVettingRecord
 from app.schemas import (
     EventInput,
     EventOutput,
@@ -51,6 +51,8 @@ from app.schemas import (
     BranchOutput,
     GroupWaitlistInput,
     GroupWaitlistOutput,
+    InstitutionMissionInput,
+    InstitutionMissionOutput,
     RotaAssignmentOutput,
     RotaGenerationInput,
     VolunteerAvailabilityInput,
@@ -85,6 +87,9 @@ from app.schemas import (
     ResourceBookingInput,
     ResourceBookingOutput,
     ResourceBookingStatusInput,
+    SafeguardingReportInput,
+    SafeguardingReportOutput,
+    SafeguardingReportStatusInput,
     ChurchResourceInput,
     ChurchResourceOutput,
     SermonInput,
@@ -96,10 +101,50 @@ from app.schemas import (
     StaffDocumentOutput,
     VisitorVisitInput,
     VisitorVisitOutput,
+    VolunteerVettingInput,
+    VolunteerVettingOutput,
+    VolunteerVettingReviewInput,
+    VolunteerVettingStatusInput,
 )
 from app.security import create_access_token, decrypt_text, encrypt_text, hash_password, keyed_digest, require_roles, verify_password
 
 EMAIL_PATTERN = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+GLOBAL_BRANCH_ROLES = {"admin", "senior_pastor", "finance_admin", "regional_overseer"}
+BRANCH_SCOPED_MODELS = (
+    Branch,
+    ChurchEvent,
+    FinanceBudget,
+    FinanceEntry,
+    FinancePledge,
+    GovernanceMeeting,
+    InstitutionMissionRecord,
+    Member,
+    MemberAttendance,
+    OfferingCountBatch,
+    SmallGroup,
+    ChurchResource,
+)
+
+
+@event.listens_for(Session, "do_orm_execute")
+def apply_staff_branch_scope(execute_state) -> None:
+    actor = execute_state.session.info.get("staff_actor")
+    if actor is None or actor.role in GLOBAL_BRANCH_ROLES:
+        return
+    if actor.branch_id is None:
+        raise HTTPException(status_code=403, detail="This staff account must be assigned to an active branch")
+    branch_id = actor.branch_id
+    statement = execute_state.statement
+    for model in BRANCH_SCOPED_MODELS:
+        if model is Branch:
+            statement = statement.options(
+                with_loader_criteria(Branch, lambda branch: branch.id == branch_id, include_aliases=True)
+            )
+        else:
+            statement = statement.options(
+                with_loader_criteria(model, lambda record: record.branch_id == branch_id, include_aliases=True)
+            )
+    execute_state.statement = statement
 
 
 def create_app(database_engine=None) -> FastAPI:
@@ -129,18 +174,19 @@ def create_app(database_engine=None) -> FastAPI:
 
     app.dependency_overrides[get_db] = db_session
     editor = require_roles("admin", "editor")
-    pastor = require_roles("admin", "pastor")
-    contact_manager = require_roles("admin", "pastor")
-    member_manager = require_roles("admin", "pastor")
-    attendance_manager = require_roles("admin", "editor", "pastor")
-    child_manager = require_roles("admin", "pastor")
-    alert_manager = require_roles("admin", "pastor")
-    volunteer_manager = require_roles("admin", "editor", "pastor")
-    group_manager = require_roles("admin", "editor", "pastor")
-    finance_manager = require_roles("admin", "treasurer")
-    pastoral_manager = require_roles("admin", "pastor")
-    resource_manager = require_roles("admin", "editor", "pastor")
-    document_manager = require_roles("admin", "pastor")
+    pastor = require_roles("admin", "pastor", "senior_pastor")
+    contact_manager = require_roles("admin", "pastor", "senior_pastor")
+    member_manager = require_roles("admin", "pastor", "senior_pastor")
+    attendance_manager = require_roles("admin", "editor", "pastor", "senior_pastor")
+    child_manager = require_roles("admin", "pastor", "senior_pastor")
+    alert_manager = require_roles("admin", "pastor", "senior_pastor")
+    volunteer_manager = require_roles("admin", "editor", "pastor", "senior_pastor", "regional_overseer")
+    group_manager = require_roles("admin", "editor", "pastor", "senior_pastor", "regional_overseer")
+    finance_manager = require_roles("admin", "treasurer", "finance_admin")
+    pastoral_manager = require_roles("admin", "pastor", "senior_pastor")
+    resource_manager = require_roles("admin", "editor", "pastor", "senior_pastor")
+    document_manager = require_roles("admin", "pastor", "senior_pastor")
+    cross_branch_roles = GLOBAL_BRANCH_ROLES
 
     def record_audit(db: Session, actor: AdminUser, action: str, entity_type: str, entity_id: int) -> None:
         db.add(AuditLog(actor_id=actor.id, action=action, entity_type=entity_type, entity_id=entity_id))
@@ -156,14 +202,64 @@ def create_app(database_engine=None) -> FastAPI:
         branch_id: int | None,
         current_branch_id: int | None = None,
     ) -> int | None:
+        actor: AdminUser | None = db.info.get("staff_actor")
+        if actor is not None:
+            if actor.role in cross_branch_roles:
+                branch_id = branch_id or current_branch_id or actor.branch_id
+            else:
+                if actor.branch_id is None:
+                    raise HTTPException(status_code=403, detail="This staff account must be assigned to an active branch")
+                if current_branch_id is not None and current_branch_id != actor.branch_id:
+                    raise HTTPException(status_code=404, detail="Record not found")
+                if branch_id is not None and branch_id != actor.branch_id:
+                    raise HTTPException(status_code=403, detail="Staff cannot assign records outside their branch")
+                branch_id = actor.branch_id
         if branch_id is None:
-            return None
+            raise HTTPException(status_code=422, detail="A branch must be assigned to new records")
         branch = db.get(Branch, branch_id)
         if branch is None:
             raise HTTPException(status_code=404, detail="Branch not found")
         if not branch.is_active and branch_id != current_branch_id:
             raise HTTPException(status_code=422, detail="New records cannot be assigned to an inactive branch")
         return branch.id
+
+    def branch_scoped_query(
+        query,
+        model,
+        db: Session,
+        requested_branch_id: int | None = None,
+    ):
+        actor: AdminUser | None = db.info.get("staff_actor")
+        if actor is None:
+            if requested_branch_id is not None:
+                query = query.where(model.branch_id == requested_branch_id)
+            return query
+        if actor.role in cross_branch_roles:
+            if requested_branch_id is not None:
+                query = query.where(model.branch_id == requested_branch_id)
+            return query
+        if actor.branch_id is None:
+            raise HTTPException(status_code=403, detail="This staff account must be assigned to an active branch")
+        if requested_branch_id is not None and requested_branch_id != actor.branch_id:
+            raise HTTPException(status_code=403, detail="Staff cannot access records outside their branch")
+        return query.where(model.branch_id == actor.branch_id)
+
+    def effective_branch_id(actor: AdminUser, requested_branch_id: int | None) -> int | None:
+        if actor.role in cross_branch_roles:
+            return requested_branch_id
+        if actor.branch_id is None:
+            raise HTTPException(status_code=403, detail="This staff account must be assigned to an active branch")
+        if requested_branch_id is not None and requested_branch_id != actor.branch_id:
+            raise HTTPException(status_code=403, detail="Staff cannot access records outside their branch")
+        return actor.branch_id
+
+    def require_record_branch(actor: AdminUser, record_branch_id: int | None) -> None:
+        if actor.role in cross_branch_roles:
+            return
+        if actor.branch_id is None:
+            raise HTTPException(status_code=403, detail="This staff account must be assigned to an active branch")
+        if record_branch_id != actor.branch_id:
+            raise HTTPException(status_code=404, detail="Record not found")
 
     def child_profile_output(db: Session, child: ChildProfile) -> ChildOutput:
         pickup_ids = db.scalars(
@@ -225,6 +321,7 @@ def create_app(database_engine=None) -> FastAPI:
             longitude=group.longitude,
             is_open=group.is_open,
             is_published=group.is_published,
+            branch_id=group.branch_id,
             created_at=group.created_at,
             updated_at=group.updated_at,
             distance_km=distance_km,
@@ -406,6 +503,7 @@ def create_app(database_engine=None) -> FastAPI:
             reviewed_by_id=booking.reviewed_by_id,
             created_at=booking.created_at,
             reviewed_at=booking.reviewed_at,
+            branch_id=resource.branch_id,
         )
 
     def staff_document_output(document: StaffDocument) -> StaffDocumentOutput:
@@ -605,12 +703,15 @@ def create_app(database_engine=None) -> FastAPI:
         near_latitude: float | None = Query(default=None, ge=-90, le=90),
         near_longitude: float | None = Query(default=None, ge=-180, le=180),
         radius_km: float = Query(default=25, gt=0, le=100),
+        branch_id: int | None = Query(default=None, ge=1),
         limit: int = Query(default=50, ge=1, le=100),
         db: Session = Depends(get_db),
     ):
         if (near_latitude is None) != (near_longitude is None):
             raise HTTPException(status_code=422, detail="Both approximate location coordinates are required")
         query = select(SmallGroup).where(SmallGroup.is_published.is_(True))
+        if branch_id is not None:
+            query = query.where(SmallGroup.branch_id == branch_id)
         if open_only:
             query = query.where(SmallGroup.is_open.is_(True))
         if meeting_day:
@@ -669,8 +770,15 @@ def create_app(database_engine=None) -> FastAPI:
         return {"id": request.id, "status": request.status}
 
     @app.get("/api/v1/admin/groups", response_model=list[SmallGroupOutput], tags=["groups"])
-    def list_groups_for_staff(_: Annotated[AdminUser, Depends(group_manager)], db: Session = Depends(get_db)):
-        groups = db.scalars(select(SmallGroup).order_by(SmallGroup.name)).all()
+    def list_groups_for_staff(
+        _: Annotated[AdminUser, Depends(group_manager)],
+        branch_id: int | None = Query(default=None, ge=1),
+        db: Session = Depends(get_db),
+    ):
+        query = select(SmallGroup)
+        if branch_id is not None:
+            query = query.where(SmallGroup.branch_id == branch_id)
+        groups = db.scalars(query.order_by(SmallGroup.name)).all()
         return [group_output(group) for group in groups]
 
     @app.post("/api/v1/admin/groups", response_model=SmallGroupOutput, status_code=201, tags=["groups"])
@@ -679,7 +787,9 @@ def create_app(database_engine=None) -> FastAPI:
         actor: Annotated[AdminUser, Depends(group_manager)],
         db: Session = Depends(get_db),
     ):
-        group = SmallGroup(**payload.model_dump(), updated_by_id=actor.id)
+        values = payload.model_dump()
+        values["branch_id"] = validate_branch_assignment(db, payload.branch_id)
+        group = SmallGroup(**values, updated_by_id=actor.id)
         db.add(group)
         db.flush()
         record_audit(db, actor, "create", "small_group", group.id)
@@ -697,7 +807,9 @@ def create_app(database_engine=None) -> FastAPI:
         group = db.get(SmallGroup, group_id)
         if group is None:
             raise HTTPException(status_code=404, detail="Small group not found")
-        for field, value in payload.model_dump().items():
+        values = payload.model_dump()
+        values["branch_id"] = validate_branch_assignment(db, payload.branch_id, group.branch_id)
+        for field, value in values.items():
             setattr(group, field, value)
         group.updated_by_id = actor.id
         record_audit(db, actor, "update", "small_group", group.id)
@@ -889,8 +1001,17 @@ def create_app(database_engine=None) -> FastAPI:
         return TokenOutput(access_token=create_access_token(user))
 
     @app.get("/api/v1/auth/me", tags=["staff"])
-    def current_staff(actor: Annotated[AdminUser, Depends(require_roles("admin", "editor", "pastor", "treasurer"))]):
-        return {"id": actor.id, "email": actor.email, "display_name": actor.display_name, "role": actor.role}
+    def current_staff(actor: Annotated[AdminUser, Depends(require_roles(
+        "admin", "editor", "pastor", "treasurer", "finance_admin", "senior_pastor", "regional_overseer",
+        "safeguarding_lead", "hr_admin", "board_chair", "trustee", "associate_pastor", "licensed_counselor",
+    ))]):
+        return {
+            "id": actor.id,
+            "email": actor.email,
+            "display_name": actor.display_name,
+            "role": actor.role,
+            "branch_id": actor.branch_id,
+        }
 
     @app.post("/api/v1/admin/pages", response_model=PageOutput, status_code=201, tags=["staff CMS"])
     def create_page(payload: PageInput, actor: Annotated[AdminUser, Depends(editor)], db: Session = Depends(get_db)):
@@ -1144,13 +1265,393 @@ def create_app(database_engine=None) -> FastAPI:
         db.refresh(branch)
         return branch
 
+    def safeguarding_report_output(report: SafeguardingReport) -> SafeguardingReportOutput:
+        details = json.loads(decrypt_text(report.encrypted_payload))
+        return SafeguardingReportOutput(
+            id=report.id,
+            report_type=details["report_type"],
+            incident_date=date.fromisoformat(details["incident_date"]),
+            incident_time=details["incident_time"],
+            location=details["location"],
+            people_involved=details["people_involved"],
+            witness_names=details["witness_names"],
+            factual_description=details["factual_description"],
+            action_taken=details["action_taken"],
+            reporter_name=details["reporter_name"],
+            reporter_contact=details["reporter_contact"],
+            involves_restricted_staff=report.involves_restricted_staff,
+            serious_child_protection=report.serious_child_protection,
+            status=report.status,
+            retention_until=report.retention_until,
+            external_referral_at=report.external_referral_at,
+            investigation_started_by_id=report.investigation_started_by_id,
+            senior_resolution_approval_by_id=report.senior_resolution_approval_by_id,
+            trustee_resolution_approval_by_id=report.trustee_resolution_approval_by_id,
+            created_at=report.created_at,
+            updated_at=report.updated_at,
+        )
+
+    @app.post("/api/v1/safeguarding/reports", status_code=201, tags=["safeguarding"])
+    def submit_safeguarding_report(payload: SafeguardingReportInput, db: Session = Depends(get_db)):
+        if not payload.privacy_acknowledged:
+            raise HTTPException(status_code=422, detail="Privacy acknowledgment is required")
+        now = datetime.now(timezone.utc)
+        retention_year = now.year + 25
+        try:
+            retention_until = date(retention_year, now.month, now.day)
+        except ValueError:
+            retention_until = date(retention_year, 2, 28)
+        details = payload.model_dump(exclude={"involves_restricted_staff", "serious_child_protection", "privacy_acknowledged"})
+        details["incident_date"] = payload.incident_date.isoformat()
+        report = SafeguardingReport(
+            encrypted_payload=encrypt_text(json.dumps(details)),
+            involves_restricted_staff=payload.involves_restricted_staff,
+            serious_child_protection=payload.serious_child_protection,
+            status="referral_required" if payload.serious_child_protection else "new",
+            retention_until=retention_until,
+        )
+        db.add(report)
+        db.commit()
+        db.refresh(report)
+        return {
+            "id": report.id,
+            "status": report.status,
+            "retention_until": report.retention_until,
+            "message": "Your report was received. If anyone is in immediate danger, contact local emergency services directly.",
+        }
+
+    def safeguarding_report_access(actor: AdminUser, report: SafeguardingReport) -> None:
+        if actor.role in {"board_chair", "trustee"}:
+            if report.involves_restricted_staff or (
+                not report.serious_child_protection and report.status == "pending_resolution"
+            ):
+                return
+            raise HTTPException(status_code=404, detail="Safeguarding report not found")
+        if report.involves_restricted_staff:
+            raise HTTPException(status_code=404, detail="Safeguarding report not found")
+        if actor.role not in {"safeguarding_lead", "senior_pastor"}:
+            raise HTTPException(status_code=404, detail="Safeguarding report not found")
+
+    @app.get("/api/v1/admin/safeguarding/reports", response_model=list[SafeguardingReportOutput], tags=["safeguarding"])
+    def list_safeguarding_reports(
+        actor: Annotated[AdminUser, Depends(require_roles("safeguarding_lead", "senior_pastor", "board_chair", "trustee"))],
+        limit: int = Query(default=100, ge=1, le=500),
+        db: Session = Depends(get_db),
+    ):
+        query = select(SafeguardingReport)
+        if actor.role in {"board_chair", "trustee"}:
+            query = query.where(or_(
+                SafeguardingReport.involves_restricted_staff.is_(True),
+                (
+                    SafeguardingReport.serious_child_protection.is_(False)
+                    & (SafeguardingReport.status == "pending_resolution")
+                ),
+            ))
+        else:
+            query = query.where(SafeguardingReport.involves_restricted_staff.is_(False))
+        reports = db.scalars(query.order_by(SafeguardingReport.created_at.desc()).limit(limit)).all()
+        for report in reports:
+            record_audit(db, actor, "view", "safeguarding_report", report.id)
+        if reports:
+            db.commit()
+        return [safeguarding_report_output(report) for report in reports]
+
+    @app.patch("/api/v1/admin/safeguarding/reports/{report_id}/status", response_model=SafeguardingReportOutput, tags=["safeguarding"])
+    def update_safeguarding_report_status(
+        report_id: int,
+        payload: SafeguardingReportStatusInput,
+        actor: Annotated[AdminUser, Depends(require_roles("safeguarding_lead", "senior_pastor", "board_chair", "trustee"))],
+        db: Session = Depends(get_db),
+    ):
+        report = db.get(SafeguardingReport, report_id)
+        if report is None:
+            raise HTTPException(status_code=404, detail="Safeguarding report not found")
+        safeguarding_report_access(actor, report)
+        if report.serious_child_protection:
+            if payload.status != "referred_to_authorities":
+                raise HTTPException(status_code=422, detail="Serious child-protection cases must be referred externally, not resolved internally")
+            if not report.involves_restricted_staff and actor.role != "safeguarding_lead":
+                raise HTTPException(status_code=403, detail="Only the safeguarding lead can record an external referral")
+            if report.status != "referral_required":
+                raise HTTPException(status_code=409, detail="This report has already been referred")
+            report.status = "referred_to_authorities"
+            report.external_referral_at = datetime.now(timezone.utc)
+        elif payload.status == "investigating":
+            if actor.role not in {"safeguarding_lead", "board_chair", "trustee"}:
+                raise HTTPException(status_code=403, detail="Only the safeguarding lead or assigned board reviewer can investigate")
+            if report.status != "new":
+                raise HTTPException(status_code=409, detail="Only new reports can enter investigation")
+            report.status = "investigating"
+            report.investigation_started_by_id = actor.id
+        elif payload.status == "pending_resolution":
+            if actor.role not in {"safeguarding_lead", "board_chair", "trustee"}:
+                raise HTTPException(status_code=403, detail="Only the safeguarding lead or assigned board reviewer can request resolution")
+            if report.status != "investigating":
+                raise HTTPException(status_code=409, detail="Only an investigated report can enter resolution review")
+            report.status = "pending_resolution"
+        elif payload.status == "approve_resolution":
+            if report.status != "pending_resolution":
+                raise HTTPException(status_code=409, detail="This report is not awaiting resolution approval")
+            if actor.role == "senior_pastor":
+                report.senior_resolution_approval_by_id = actor.id
+            elif actor.role in {"trustee", "board_chair"}:
+                report.trustee_resolution_approval_by_id = actor.id
+            else:
+                raise HTTPException(status_code=403, detail="Resolution requires Senior Pastor and Trustee/Board approval")
+            if report.senior_resolution_approval_by_id and report.trustee_resolution_approval_by_id:
+                if report.senior_resolution_approval_by_id == report.trustee_resolution_approval_by_id:
+                    raise HTTPException(status_code=422, detail="Two distinct reviewers must approve resolution")
+                report.status = "resolved"
+        elif payload.status == "reject_resolution":
+            if actor.role not in {"senior_pastor", "trustee", "board_chair"}:
+                raise HTTPException(status_code=403, detail="Only resolution reviewers can reject closure")
+            if report.status != "pending_resolution":
+                raise HTTPException(status_code=409, detail="This report is not awaiting resolution approval")
+            report.status = "investigating"
+            report.senior_resolution_approval_by_id = None
+            report.trustee_resolution_approval_by_id = None
+        else:
+            if payload.status != "referred_to_authorities":
+                raise HTTPException(status_code=422, detail="Unsupported safeguarding status transition")
+            if report.status in {"resolved", "referred_to_authorities"}:
+                raise HTTPException(status_code=409, detail="This report is already closed or referred")
+            report.status = "referred_to_authorities"
+            report.external_referral_at = datetime.now(timezone.utc)
+        report.updated_by_id = actor.id
+        record_audit(db, actor, "status_change", "safeguarding_report", report.id)
+        db.commit()
+        db.refresh(report)
+        return safeguarding_report_output(report)
+
+    def volunteer_vetting_output(db: Session, record: VolunteerVettingRecord) -> VolunteerVettingOutput:
+        member = db.get(Member, record.member_id)
+        if member is None:
+            raise HTTPException(status_code=404, detail="Member record not found")
+        details = json.loads(decrypt_text(record.encrypted_details))
+        return VolunteerVettingOutput(
+            id=record.id,
+            member_id=record.member_id,
+            member_name=json.loads(decrypt_text(member.encrypted_profile))["name"],
+            government_id=details["government_id"],
+            reference_names=details["reference_names"],
+            reference_contacts=details["reference_contacts"],
+            background_check_consent=details["background_check_consent"],
+            background_check_status=record.background_check_status,
+            references_checked=record.references_checked,
+            training_completed_at=record.training_completed_at,
+            service_started_at=record.service_started_at,
+            service_ended_at=record.service_ended_at,
+            retention_until=record.retention_until,
+            status=record.status,
+            created_by_id=record.created_by_id,
+            reviewed_by_id=record.reviewed_by_id,
+            created_at=record.created_at,
+            updated_at=record.updated_at,
+        )
+
+    @app.get("/api/v1/admin/safeguarding/vetting/members", tags=["safeguarding"])
+    def list_vetting_member_options(
+        _: Annotated[AdminUser, Depends(require_roles("admin", "hr_admin", "safeguarding_lead"))],
+        db: Session = Depends(get_db),
+    ):
+        members = db.scalars(select(Member).where(Member.status == "active").order_by(Member.id).limit(500)).all()
+        return [
+            {"id": member.id, "name": json.loads(decrypt_text(member.encrypted_profile))["name"]}
+            for member in members
+        ]
+
+    @app.get("/api/v1/admin/safeguarding/vetting", response_model=list[VolunteerVettingOutput], tags=["safeguarding"])
+    def list_volunteer_vetting(
+        _: Annotated[AdminUser, Depends(require_roles("admin", "hr_admin", "safeguarding_lead", "senior_pastor"))],
+        status: str | None = Query(default=None, pattern="^(pending|approved|rejected|service_ended)$"),
+        limit: int = Query(default=100, ge=1, le=500),
+        db: Session = Depends(get_db),
+    ):
+        query = select(VolunteerVettingRecord)
+        if status:
+            query = query.where(VolunteerVettingRecord.status == status)
+        records = db.scalars(query.order_by(VolunteerVettingRecord.created_at.desc()).limit(limit)).all()
+        for record in records:
+            record_audit(db, _, "view", "volunteer_vetting_record", record.id)
+        if records:
+            db.commit()
+        return [volunteer_vetting_output(db, record) for record in records]
+
+    @app.post("/api/v1/admin/safeguarding/vetting", response_model=VolunteerVettingOutput, status_code=201, tags=["safeguarding"])
+    def create_volunteer_vetting(
+        payload: VolunteerVettingInput,
+        actor: Annotated[AdminUser, Depends(require_roles("admin", "hr_admin", "safeguarding_lead"))],
+        db: Session = Depends(get_db),
+    ):
+        if not payload.background_check_consent:
+            raise HTTPException(status_code=422, detail="Background-check consent is required")
+        member = active_member(db, payload.member_id)
+        details = {
+            "government_id": payload.government_id.strip(),
+            "reference_names": payload.reference_names.strip(),
+            "reference_contacts": payload.reference_contacts.strip(),
+            "background_check_consent": payload.background_check_consent,
+        }
+        if not all((details["government_id"], details["reference_names"], details["reference_contacts"])):
+            raise HTTPException(status_code=422, detail="ID and reference details cannot be blank")
+        record = VolunteerVettingRecord(
+            member_id=member.id,
+            encrypted_details=encrypt_text(json.dumps(details)),
+            background_check_status="pending",
+            references_checked=False,
+            service_started_at=payload.service_started_at or datetime.now(timezone.utc).date(),
+            status="pending",
+            created_by_id=actor.id,
+        )
+        db.add(record)
+        db.flush()
+        record_audit(db, actor, "create", "volunteer_vetting_record", record.id)
+        db.commit()
+        db.refresh(record)
+        return volunteer_vetting_output(db, record)
+
+    @app.patch("/api/v1/admin/safeguarding/vetting/{record_id}/review", response_model=VolunteerVettingOutput, tags=["safeguarding"])
+    def review_volunteer_vetting(
+        record_id: int,
+        payload: VolunteerVettingReviewInput,
+        actor: Annotated[AdminUser, Depends(require_roles("safeguarding_lead"))],
+        db: Session = Depends(get_db),
+    ):
+        record = db.get(VolunteerVettingRecord, record_id)
+        if record is None:
+            raise HTTPException(status_code=404, detail="Vetting record not found")
+        if record.status != "pending":
+            raise HTTPException(status_code=409, detail="Only pending vetting records can be reviewed")
+        record.background_check_status = payload.background_check_status
+        record.references_checked = payload.references_checked
+        record.training_completed_at = payload.training_completed_at
+        record.reviewed_by_id = actor.id
+        record_audit(db, actor, "review", "volunteer_vetting_record", record.id)
+        db.commit()
+        db.refresh(record)
+        return volunteer_vetting_output(db, record)
+
+    @app.patch("/api/v1/admin/safeguarding/vetting/{record_id}/status", response_model=VolunteerVettingOutput, tags=["safeguarding"])
+    def update_volunteer_vetting_status(
+        record_id: int,
+        payload: VolunteerVettingStatusInput,
+        actor: Annotated[AdminUser, Depends(require_roles("safeguarding_lead"))],
+        db: Session = Depends(get_db),
+    ):
+        record = db.get(VolunteerVettingRecord, record_id)
+        if record is None:
+            raise HTTPException(status_code=404, detail="Vetting record not found")
+        if record.status != "pending" and payload.status != "service_ended":
+            raise HTTPException(status_code=409, detail="Only pending vetting records can be approved or rejected")
+        if payload.status == "approved":
+            if record.background_check_status != "clear" or not record.references_checked or not record.training_completed_at:
+                raise HTTPException(status_code=422, detail="Clear background check, checked references, and completed training are required")
+        elif payload.status == "rejected":
+            if record.background_check_status == "pending" or not record.references_checked:
+                raise HTTPException(status_code=422, detail="Complete background check and reference review before rejection")
+        else:
+            if record.status != "approved" or payload.service_ended_at is None:
+                raise HTTPException(status_code=422, detail="An approved record and service end date are required")
+            if payload.service_ended_at < record.service_started_at:
+                raise HTTPException(status_code=422, detail="Service end date cannot be before service start")
+            try:
+                record.retention_until = date(payload.service_ended_at.year + 7, payload.service_ended_at.month, payload.service_ended_at.day)
+            except ValueError:
+                record.retention_until = date(payload.service_ended_at.year + 7, 2, 28)
+            record.service_ended_at = payload.service_ended_at
+        record.status = payload.status
+        record.reviewed_by_id = actor.id
+        record_audit(db, actor, "status_change", "volunteer_vetting_record", record.id)
+        db.commit()
+        db.refresh(record)
+        return volunteer_vetting_output(db, record)
+
+    @app.get(
+        "/api/v1/admin/institutions-missions",
+        response_model=list[InstitutionMissionOutput],
+        tags=["institutions and missions"],
+    )
+    def list_institutions_missions(
+        _: Annotated[AdminUser, Depends(pastoral_manager)],
+        record_type: str | None = Query(default=None, pattern="^(school|clinic|savings_group|church_plant|mission_field)$"),
+        branch_id: int | None = Query(default=None, ge=1),
+        include_inactive: bool = False,
+        db: Session = Depends(get_db),
+    ):
+        query = select(InstitutionMissionRecord)
+        if record_type:
+            query = query.where(InstitutionMissionRecord.record_type == record_type)
+        if branch_id is not None:
+            query = query.where(InstitutionMissionRecord.branch_id == branch_id)
+        if not include_inactive:
+            query = query.where(InstitutionMissionRecord.is_active.is_(True))
+        return db.scalars(query.order_by(InstitutionMissionRecord.record_type, InstitutionMissionRecord.name)).all()
+
+    @app.post(
+        "/api/v1/admin/institutions-missions",
+        response_model=InstitutionMissionOutput,
+        status_code=201,
+        tags=["institutions and missions"],
+    )
+    def create_institution_mission(
+        payload: InstitutionMissionInput,
+        actor: Annotated[AdminUser, Depends(pastoral_manager)],
+        db: Session = Depends(get_db),
+    ):
+        name = payload.name.strip()
+        if not name:
+            raise HTTPException(status_code=422, detail="Name cannot be blank")
+        record = InstitutionMissionRecord(
+            record_type=payload.record_type,
+            name=name,
+            location=payload.location.strip(),
+            description=payload.description.strip(),
+            is_active=payload.is_active,
+            branch_id=validate_branch_assignment(db, payload.branch_id),
+            created_by_id=actor.id,
+        )
+        db.add(record)
+        db.flush()
+        record_audit(db, actor, "create", "institution_mission_record", record.id)
+        db.commit()
+        db.refresh(record)
+        return record
+
+    @app.put(
+        "/api/v1/admin/institutions-missions/{record_id}",
+        response_model=InstitutionMissionOutput,
+        tags=["institutions and missions"],
+    )
+    def update_institution_mission(
+        record_id: int,
+        payload: InstitutionMissionInput,
+        actor: Annotated[AdminUser, Depends(pastoral_manager)],
+        db: Session = Depends(get_db),
+    ):
+        record = db.get(InstitutionMissionRecord, record_id)
+        if record is None:
+            raise HTTPException(status_code=404, detail="Institution or mission record not found")
+        name = payload.name.strip()
+        if not name:
+            raise HTTPException(status_code=422, detail="Name cannot be blank")
+        record.record_type = payload.record_type
+        record.name = name
+        record.location = payload.location.strip()
+        record.description = payload.description.strip()
+        record.is_active = payload.is_active
+        record.branch_id = validate_branch_assignment(db, payload.branch_id, record.branch_id)
+        record_audit(db, actor, "update", "institution_mission_record", record.id)
+        db.commit()
+        db.refresh(record)
+        return record
+
     @app.get(
         "/api/v1/admin/analytics/overview",
         response_model=AnalyticsOverviewOutput,
         tags=["analytics"],
     )
     def analytics_overview(
-        _: Annotated[AdminUser, Depends(pastoral_manager)],
+        actor: Annotated[AdminUser, Depends(pastoral_manager)],
         period_start: date | None = None,
         period_end: date | None = None,
         branch_id: int | None = None,
@@ -1163,6 +1664,7 @@ def create_app(database_engine=None) -> FastAPI:
             raise HTTPException(status_code=422, detail="Period start must be on or before period end")
         if (end_date - start_date).days > 365:
             raise HTTPException(status_code=422, detail="Analytics period cannot exceed 366 days")
+        branch_id = effective_branch_id(actor, branch_id)
         start_at = datetime.combine(start_date, datetime.min.time(), tzinfo=timezone.utc)
         end_at = datetime.combine(end_date + timedelta(days=1), datetime.min.time(), tzinfo=timezone.utc)
         members_query = select(func.count()).select_from(Member).where(Member.status == "active")
@@ -1388,10 +1890,14 @@ def create_app(database_engine=None) -> FastAPI:
                 channel=channel,
                 is_consented=by_channel[channel].is_consented if channel in by_channel else False,
                 consent_source=by_channel[channel].consent_source if channel in by_channel else "not_provided",
+                delivery_frequency=by_channel[channel].delivery_frequency if channel in by_channel else "essential_only",
+                quiet_hours_start=by_channel[channel].quiet_hours_start if channel in by_channel else "21:00",
+                quiet_hours_end=by_channel[channel].quiet_hours_end if channel in by_channel else "07:00",
+                timezone=by_channel[channel].timezone if channel in by_channel else "Africa/Kampala",
                 consented_at=by_channel[channel].consented_at if channel in by_channel else None,
                 updated_at=by_channel[channel].updated_at if channel in by_channel else None,
             )
-            for channel in ("email", "sms")
+            for channel in ("email", "sms", "whatsapp")
         ]
 
     @app.put("/api/v1/admin/members/{member_id}/communication-consents", response_model=list[CommunicationConsentOutput], tags=["communications"])
@@ -1424,6 +1930,10 @@ def create_app(database_engine=None) -> FastAPI:
                     channel=preference.channel,
                     is_consented=preference.is_consented,
                     consent_source=preference.consent_source,
+                    delivery_frequency=preference.delivery_frequency,
+                    quiet_hours_start=preference.quiet_hours_start,
+                    quiet_hours_end=preference.quiet_hours_end,
+                    timezone=preference.timezone,
                     consented_at=now if preference.is_consented else None,
                     updated_by_id=actor.id,
                 )
@@ -1431,6 +1941,10 @@ def create_app(database_engine=None) -> FastAPI:
             else:
                 record.is_consented = preference.is_consented
                 record.consent_source = preference.consent_source
+                record.delivery_frequency = preference.delivery_frequency
+                record.quiet_hours_start = preference.quiet_hours_start
+                record.quiet_hours_end = preference.quiet_hours_end
+                record.timezone = preference.timezone
                 record.consented_at = now if preference.is_consented else None
                 record.updated_by_id = actor.id
                 record.updated_at = now
@@ -1444,6 +1958,10 @@ def create_app(database_engine=None) -> FastAPI:
                 channel=record.channel,
                 is_consented=record.is_consented,
                 consent_source=record.consent_source,
+                delivery_frequency=record.delivery_frequency,
+                quiet_hours_start=record.quiet_hours_start,
+                quiet_hours_end=record.quiet_hours_end,
+                timezone=record.timezone,
                 consented_at=record.consented_at,
                 updated_at=record.updated_at,
             )
@@ -2243,7 +2761,7 @@ def create_app(database_engine=None) -> FastAPI:
             amount_ugx=original.amount_ugx,
             fund=original.fund,
             category=original.category,
-            entry_date=datetime.now(timezone.utc).date(),
+            entry_date=original.entry_date,
             payment_method=original.payment_method,
             status="pending",
             encrypted_details=encrypt_text(json.dumps({
@@ -2441,12 +2959,13 @@ def create_app(database_engine=None) -> FastAPI:
     def finance_report(
         period_start: date,
         period_end: date,
-        _: Annotated[AdminUser, Depends(finance_manager)],
+        actor: Annotated[AdminUser, Depends(finance_manager)],
         branch_id: int | None = None,
         db: Session = Depends(get_db),
     ):
         if period_start > period_end:
             raise HTTPException(status_code=422, detail="period_start must be on or before period_end")
+        branch_id = effective_branch_id(actor, branch_id)
         def total_for(entry_type: str, statuses: tuple[str, ...]) -> int:
             query = select(func.coalesce(func.sum(FinanceEntry.amount_ugx), 0)).where(
                 FinanceEntry.entry_type == entry_type,
@@ -2575,6 +3094,7 @@ def create_app(database_engine=None) -> FastAPI:
             name=name,
             description=payload.description.strip(),
             is_active=payload.is_active,
+            branch_id=validate_branch_assignment(db, payload.branch_id),
             created_by_id=actor.id,
         )
         db.add(resource)
@@ -2592,11 +3112,14 @@ def create_app(database_engine=None) -> FastAPI:
     def list_church_resources(
         _: Annotated[AdminUser, Depends(resource_manager)],
         include_inactive: bool = False,
+        branch_id: int | None = Query(default=None, ge=1),
         db: Session = Depends(get_db),
     ):
         query = select(ChurchResource)
         if not include_inactive:
             query = query.where(ChurchResource.is_active.is_(True))
+        if branch_id is not None:
+            query = query.where(ChurchResource.branch_id == branch_id)
         return db.scalars(query.order_by(ChurchResource.name)).all()
 
     @app.put("/api/v1/admin/resources/{resource_id}", response_model=ChurchResourceOutput, tags=["resources"])
@@ -2615,6 +3138,7 @@ def create_app(database_engine=None) -> FastAPI:
         resource.name = name
         resource.description = payload.description.strip()
         resource.is_active = payload.is_active
+        resource.branch_id = validate_branch_assignment(db, payload.branch_id, resource.branch_id)
         try:
             record_audit(db, actor, "update", "church_resource", resource.id)
             db.commit()
@@ -2669,12 +3193,16 @@ def create_app(database_engine=None) -> FastAPI:
     def list_resource_bookings(
         _: Annotated[AdminUser, Depends(resource_manager)],
         resource_id: int | None = Query(default=None, ge=1),
+        branch_id: int | None = Query(default=None, ge=1),
         status: str | None = Query(default=None, pattern="^(pending|approved|rejected|cancelled)$"),
         db: Session = Depends(get_db),
     ):
         query = select(ResourceBooking)
         if resource_id:
             query = query.where(ResourceBooking.resource_id == resource_id)
+        if branch_id is not None:
+            query = query.join(ChurchResource, ResourceBooking.resource_id == ChurchResource.id)
+            query = query.where(ChurchResource.branch_id == branch_id)
         if status:
             query = query.where(ResourceBooking.status == status)
         bookings = db.scalars(query.order_by(ResourceBooking.starts_at).limit(500))
