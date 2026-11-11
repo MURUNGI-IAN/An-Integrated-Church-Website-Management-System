@@ -3,7 +3,7 @@ Bwala Deliverance and Healing Ministries International (Masaka)
 
 An Integrated Church Website & Management System
 
-Replacing paper registers, scattered spreadsheets, and chaotic group chats with one connected platform.
+Replacing paperwork registers, scattered spreadsheets, and chaotic group chats with one connected platform.
 
 Show Image Show Image Show Image Show Image
 
